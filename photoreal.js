@@ -37,7 +37,11 @@ uniform float uBlockGap; // 0..1 clear slot on the far horizon toward the sun (f
 uniform float uChop;    // water surface roughness from forecast wind/gusts: 0 glassy mirror .. 1 rough
 uniform float uSwell;   // swell / wave height 0..1 (marine forecast, exposure-weighted)
 uniform float uCaps;    // whitecap coverage 0..1
-uniform float uPhase;   // wave motion phase (advances with the slider / Play)
+uniform float uPhase;
+uniform float uSurf;    // DRAFT: breaking-wave face height (m) for surf spots, 0 = off
+uniform float uOff;     // DRAFT: offshore wind 0..1 (grooms faces, spray blown back off the lips)
+uniform float uSurfT;   // DRAFT: wave clock (s)
+uniform float uSurfL;   // DRAFT: breaker spacing (m)   // wave motion phase (advances with the slider / Play)
 
 const float PI = 3.14159265;
 const float R0 = 6360.0;
@@ -285,6 +289,24 @@ float pierHit(vec3 ro, vec3 rd, out float tp){
   return hit;
 }
 
+
+// ---------- DRAFT: shoaling / breaking surf heightfield (metres, camera-local: x right, -z out to sea) ----------
+float surfX(vec2 p){ float d = -p.y; return fract((d + uSurfT * 6.5) / uSurfL + .09 * sin(p.x * .021 + uSeed.x) + .05 * sin(p.x * .057)); }
+float surfEnv(vec2 p){ float d = -p.y; return smoothstep(1., 12., d) * (1. - smoothstep(140., 320., d)); }
+float surfSec(vec2 p){ return clamp(.62 + .38 * sin(p.x * .027 + uSeed.y) * sin(p.x * .011 + 1.7) + .15 * sin(p.x * .09), .25, 1.); }
+float surfH(vec2 p){
+  float env = surfEnv(p); if (env <= 0.) return 0.;
+  float d = -p.y, x = surfX(p), sec = surfSec(p);
+  float brk = smoothstep(110., 40., d) * sec;                        // closer in = steeper, about to pitch
+  float fw = mix(.11, .035, brk);                                    // face width as a fraction of the spacing
+  float back = pow(1. - smoothstep(0., .78, x), 1.7);
+  float face = pow(smoothstep(1. - fw, 1., x), 1.25 + brk);
+  float h = max(back, face);
+  float H = uSurf * env * sec * mix(.5, 1.1, smoothstep(160., 45., d)) * mix(1., .45, smoothstep(30., 8., d));
+  float groom = (fbm(vec2(p.x * .08, d * .9), 0., 3) - .5) * mix(.25, .06, uOff) * (.3 + .7 * uChop);  // offshore grooms, onshore roughens
+  return (h - .32) * H + groom * min(H, 1.);
+}
+
 vec3 aces(vec3 x){ return clamp((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14), 0., 1.); }
 
 void main(){
@@ -436,6 +458,65 @@ void main(){
     if (uWater > .5 && elevR < dip) col = mix(col, hzS * .15, .5);
   }
 
+  // ---------- DRAFT: breaking surf rendered as geometry (faces stand up above the eye-level water line) ----------
+  if (uSurf > .05 && uWater > .5 && rd.y < .03 && rd.y > -.6){
+    float camM = uCamH * 1000., t = 4., hitT = -1., sprayA = 0.;
+    for (int i = 0; i < 180; i++){
+      vec3 p = rd * t; float h = -camM + surfH(p.xz), dy = p.y - h;
+      if (dy < 0.){ float a = t - max(.25, t*.004), b = t; for (int k = 0; k < 6; k++){ float m = (a+b)*.5; vec3 q = rd*m; if (q.y < -camM + surfH(q.xz)) b = m; else a = m; } hitT = b; break; }
+      // offshore spray: mist above and seaward of the crest, blown back off the lip
+      if (uOff > .05 && dy < 3.5){ float x = surfX(p.xz), e = surfEnv(p.xz) * smoothstep(120., 40., -p.z) * surfSec(p.xz);
+        float behind = smoothstep(.16, .0, x) * smoothstep(-.02, .015, x);
+        float nz = fbm(vec2(p.x * .35 + uSurfT * .8, p.y * 1.6 - uSurfT * 1.5 + p.z * .2), 0., 4);
+        sprayA += exp(-max(dy, 0.) / (.5 + 1.1 * uOff)) * behind * e * smoothstep(.42, .75, nz) * uOff * .22 * min(uSurf, 2.5) * max(.25, min(t*.004, 1.)); }
+      float st = max(.2, min(dy * .55, 6.)) * (t > 60. ? 1.4 : 1.); t += st; if (t > 420.) break;
+    }
+    vec3 Ta; vec3 hz2 = skyRay(ro, normalize(vec3(rd.x, .001, rd.z)), pixA, false, Ta);
+    bool pierFirst = pier > .5 && tP < (hitT > 0. ? hitT : 1e9);
+    if (hitT > 0. && !pierFirst){
+      vec3 p = rd * hitT; vec2 q = p.xz; float e2 = .12;
+      float h0 = surfH(q), hx = surfH(q + vec2(e2, 0.)), hzz = surfH(q + vec2(0., e2));
+      vec3 n = normalize(vec3(-(hx - h0) / e2, 1., -(hzz - h0) / e2));
+      // fine ripple texture: light grooming lines when offshore, rougher when onshore
+      float rr1 = fbm(q * vec2(.9, 2.2) + uSeed, 0., 4) - .5, rr2 = fbm(q * vec2(3.5, 6.) + 3., 0., 3) - .5;
+      n = normalize(n + vec3(rr2 * .05, 0., rr1 * .12) * mix(1.3, .45, uOff) * (.4 + uChop));
+      vec3 rv = reflect(rd, n); rv.y = max(rv.y, .004); rv = normalize(rv);
+      vec3 Tr; vec3 refl = skyRay(ro, rv, pixA * 2., false, Tr);
+      float cosI = max(dot(-rd, n), .02), F = .02 + .98 * pow(1. - cosI, 5.);
+      float x = surfX(q), d = -q.y, sec = surfSec(q), brk = smoothstep(150., 70., d) * sec;
+      float faceZ = smoothstep(.8, .97, x), thin = smoothstep(.93, 1., x) * smoothstep(.0, .6, n.z);
+      vec3 body = hz2 * vec3(.035, .04, .03);                                             // deep water body under a dusk sky
+      vec3 trans = (hz2 * .7 + vec3(dot(hz2, vec3(.33)))) * vec3(.13, .15, .075) * thin * (.5 + .5 * brk);                       // sky light glowing through the thin face
+      vec3 c = refl * F + body * (1. - F) + trans;
+      c *= mix(1., .55, faceZ * (1. - thin) * smoothstep(.2, .8, n.z));                     // face turned away from the bright sky reads darker
+      // whitewater: feathering lip (offshore = thin, clean), pitching/broken sections, soup on the inside
+      float tex = fbm(q * vec2(.18, 2.4) + vec2(uSurfT * .3, 0.), 0., 5) * .7 + fbm(q * vec2(1.2, 4.) + 7., 0., 3) * .3;
+      float lip = smoothstep(.975, .995, x) * smoothstep(.45, .7, tex) * brk * mix(.9, .55, uOff);
+      float broke = smoothstep(60., 30., d) * smoothstep(.55, .8, fbm(vec2(q.x * .05 + uSeed.x, 2.), 0., 3));
+      float soup = broke * (smoothstep(.82, 1., x) * .9 + smoothstep(.35, .0, x) * .5) * smoothstep(.4, .75, tex);
+      float inside = smoothstep(28., 6., d) * smoothstep(.42, .72, fbm(q * vec2(.12, 1.1), 0., 5)) * .7;   // streaky foam lines left by broken waves
+      float foam = clamp(lip + soup + inside, 0., .95) * (1. - .5 * uOff * (1. - broke));
+      vec3 fc = hz2 * .75 + refl * .25; fc = mix(vec3(dot(fc, vec3(.2126,.7152,.0722))), fc, .35) * 1.25;
+      // direct sun on the waves: evening (sun behind viewer) = warm lit faces + golden glints; morning (sun ahead) = backlit
+      vec3 sL = ESUN * sunAtm * sunVis * smoothstep(-.015, .02, uSunA.y) * .045;
+      float fwd = max(dot(rd, uSunA), 0.), front = max(dot(n, uSunA), 0.);
+      c += sL * front * (.35 + .65 * faceZ) * vec3(1., .9, .78) * (1. - F) * .55;                         // front-lit face (sunset, sun at your back)
+      c += sL * pow(max(dot(reflect(rd, n), uSunA), 0.), 60.) * .8;                                      // golden glints on the groomed lines
+      c += sL * pow(fwd, 6.) * thin * vec3(.35, .75, .6) * 2.2;                                           // sun shining THROUGH the thin face (sunrise)
+      c *= mix(1., mix(.75, 1.2, smoothstep(.86, 1., x)), faceZ);                                          // shading gradient up the face: trough dark, lip bright
+      fc += sL * (front * .6 + pow(fwd, 4.) * 1.6) * vec3(1., .85, .7);                                    // whitewater catches sun: lit (evening) / glowing rim (morning)
+      // face streaks peeling down the wall + hollow throat just under the lip where a section is pitching (Sean's refs)
+      float strk = fbm(vec2(q.x * .9 + uSeed.x, x * 55.), 0., 4);
+      c *= mix(1., .82 + .36 * strk, faceZ);
+      float tube = smoothstep(.955, .985, x) * (1. - smoothstep(.988, .998, x)) * brk * smoothstep(.35, .6, fbm(vec2(q.x * .05 + uSeed.x, 2.), 0., 3)) * uOff;
+      c *= 1. - .5 * tube;
+      c = mix(c, fc * (.75 + .5 * tex), foam);
+      float fog = 1. - exp(-hitT * .001 * (BMe * 1.3 + BR.g));
+      col = mix(c, hz2 * .9, clamp(fog, 0., 1.));
+    }
+    if (!pierFirst) { vec3 sc = mix(vec3(dot(hz2, vec3(.2126,.7152,.0722))), hz2, .5) * 1.1 + ESUN * sunAtm * sunVis * smoothstep(-.015, .02, uSunA.y) * .05 * (pow(max(dot(rd, uSunA), 0.), 5.) * 2.5 + .25) * vec3(1., .82, .62); col = mix(col, sc, clamp(sprayA, 0., .7)); }
+  }
+
   // lens glare around the sun (scaled by how much sun gets through cloud)
   vec3 sa = uSunA;
   float ca = acos(clamp(dot(rd, sa), -1., 1.));
@@ -488,7 +569,7 @@ void main(){
         for (let i = 0; i < n; i++) { const a = gl.getActiveUniform(pr, i); U[a.name] = gl.getUniformLocation(pr, a.name); }
         st = { gl, pr, U };
       }
-    } catch (e) { console.warn("Photoreal renderer unavailable:", e); st = null; }
+    } catch (e) { console.warn("Photoreal renderer unavailable: " + (e && e.message)); st = null; }
     canvas._pr = st; return st;
   }
   const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
@@ -524,6 +605,7 @@ void main(){
     gl.uniform1f(U.uTwi, Math.max(0, Math.min(1, (1.5 - P.elev) / 3)) * Math.max(0, Math.min(1, (P.elev + 8) / 3))); gl.uniform1f(U.uGrainT, P.grain || 0.37);
     gl.uniform1f(U.uBlockGap, P.gap || 0);
     gl.uniform1f(U.uChop, P.chop != null ? P.chop : 0.3); gl.uniform1f(U.uSwell, P.swell || 0); gl.uniform1f(U.uCaps, P.caps || 0); gl.uniform1f(U.uPhase, P.phase || 0);
+    if (U.uSurf) { gl.uniform1f(U.uSurf, P.surf || 0); gl.uniform1f(U.uOff, P.off || 0); gl.uniform1f(U.uSurfT, P.surfT || 0); gl.uniform1f(U.uSurfL, P.surfL || 42); }
     gl.uniform1f(U.uMidH, clamp(P.midKm || 4.5, 2.5, 7.5));
     gl.uniform1f(U.uMeter, 0);
     const ovc = clamp((Math.max(P.mid, P.low, P.high * 0.6) - 0.5) / 0.45);

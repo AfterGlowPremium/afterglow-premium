@@ -236,6 +236,7 @@ Object.assign(window.SUNRISE_VIEW, {
   A("avalonpier", "Avalon Fishing Pier, Kill Devil Hills", "NC", 36.0276, -75.6648, "Pier", "Ocean pier — faces the Atlantic (east) by default; 180° shows the beach road and dunes.", [240, 300], 2, false, OCEAN("Pier silhouette with Atlantic sunrise."), ["town", "Pier", "open"]);
   A("jennettes", "Jennette's Pier, Nags Head", "NC", 35.9105, -75.5960, "Pier", "1,000-ft concrete ocean pier with wind turbines — faces east by default.", [240, 300], 2, false, OCEAN("Sunrise straight off the end of the pier."), ["town", "Pier", "open"]);
   A("frisco", "Frisco Beach / Pier ruins, Frisco", "NC", 35.2263, -75.6340, "Beach", "Hatteras Island south-facing Atlantic beach — east/southeast ocean by default; Pamlico Sound behind.", [220, 300], 1, true, [80, 160, 0, true, "Atlantic sunrise; winter sun rises over water to the SE."], ["open", "Beach", "open"]);
+  A("saltponds", "Salt Ponds Inlet, Hampton", "VA", 37.0567, -76.2913, "Beach", "Jetty-lined inlet beach at Salt Ponds (Grandview) facing the Chesapeake Bay mouth — breaks on NE/E swell; offshore = W/SW wind.", [230, 300], 1.5, false, [50, 120, 0, true, "Bay-mouth sunrise over the Chesapeake."], ["lowshore", "Beach", "open"]);
   // popular East Coast + Gulf surf spots (default faces the surf)
   const S = (id, name, st, lat, lng, note) => A(id, name, st, lat, lng, "Beach", note, [230, 300], 1.5, false, OCEAN(), ["town", "Beach", "open"]);
   S("ditchplains", "Ditch Plains, Montauk", "NY", 41.0390, -71.9170, "Rock/reef points — Long Island's best surf.");
@@ -247,6 +248,7 @@ Object.assign(window.SUNRISE_VIEW, {
   S("vb1st", "1st Street Jetty, Virginia Beach", "VA", 36.8330, -75.9720, "Virginia's most consistent break, north of Rudee Inlet.");
   S("sandbridge", "Sandbridge Beach", "VA", 36.7300, -75.9370, "Open Atlantic beach break south of VB.");
   S("sturns", "S-Turns, Rodanthe", "NC", 35.6150, -75.4690, "Hatteras Island classic — barrels on NE swell with W wind.");
+  S("rodanthe", "Rodanthe Pier, Rodanthe", "NC", 35.5887, -75.4628, "Hatteras Island ocean pier — classic OBX sunrise: low peach sun over dark backlit walls and glitter on the wet sand (Sean's reference photo).");
   S("wrightsville", "Wrightsville Beach (C St.)", "NC", 34.2100, -77.7950, "Wilmington's surf beach.");
   S("folly", "Folly Beach Washout", "SC", 32.6560, -79.9310, "South Carolina's best-known break.");
   S("tybee", "Tybee Island Pier", "GA", 31.9930, -80.8480, "Georgia's main surf spot.");

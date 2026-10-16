@@ -441,6 +441,7 @@
         <div class="scrub-marks">${marks.map((m, k) => `<button data-t="${m[1]}" style="left:${pct(m[1])}%" class="mk ${m[0]} ${k % 2 ? "alt" : ""}"><i></i><span class="lf">${m[2]}</span><span class="ls">${m[3]}</span><em>${fmtTime(m[1], r.tz).replace(/ [A-Z]{2,4}$/, "")}</em></button>`).join("")}</div>
         <input id="scrub" type="range" min="${t0}" max="${t1}" step="20" value="${T.peak}" aria-label="Time of ${RISE ? "morning" : "evening"}">
         <div class="scrub-row"><button id="pv-play" class="play">${PLAY}</button><button id="pv-turn" class="play turn" aria-pressed="false" title="Turn around and see the sky behind you (${RISE ? "west" : "east"}) — where rainbows appear">↻ 180° Turn</button><span id="pv-what" class="pv-what"></span></div>
+        <div class="zoom-row"><span class="zl">Zoom</span><input id="pv-zoom" type="range" min="1" max="3" step="0.01" value="1" aria-label="Zoom into the scene"><output id="pv-zo">1.0×</output></div>
       </div>
       <div class="readout">
         ${chip("High", Math.round(s.high) + "%", types.high || "", P.clouds)}
@@ -513,7 +514,10 @@
       raf = 0; const t = +sl.value; state.pvT = t; state.pvSpot = sp.id;
       const back = $("#pv-back"), turned = !!state.turn && back;
       // Draft: when the view behind you is open water, render it with the same photoreal sky+water shader (sun behind camera)
-      const wOpt = () => { const m = window.AGX ? AGX.sea(sp, { dir: (ev.s || {}).wdir }) : null; return m && m.ft ? { swell: Math.min(1, m.ft / 8), phase: (t % 86400) / Math.max(4, m.per * 40) } : {}; };
+      const wOpt = () => { const m = window.AGX ? AGX.sea(sp, { dir: (ev.s || {}).wdir, mph: (ev.s || {}).wind }) : null; if (!m || !m.ft) return {}; const r = { swell: Math.min(1, m.ft / 8), phase: (t % 86400) / Math.max(4, m.per * 40) };
+        if (m.surf && m.ft >= 3) Object.assign(r, { surf: m.ft * 0.3048, off: m.off ? 1 : 0, surfT: (t % 900) + performance.now() / 1000 * 0, surfL: Math.max(30, Math.min(70, (m.per || 10) * 4.2)) });
+        if (m.wl) { Object.assign(r, { chop: m.wl.chop, caps: m.wl.caps }); if (r.surf) r.off = m.wl.off; }
+        return r; };
       const backWater = turned && sp.behind && sp.behind.water && window.Photoreal;
       let o = backWater ? PhotoStage.draw(cv, Object.assign({}, sp, { far: sp.behind.far || "open", water: true, type: sp.type === "Pier" ? "Pier" : "Beach" }), ev, t, Object.assign({ lq: dragging, sunAzOff: 180 }, wOpt())) : null;
       if (o && o.mode !== "live") o = null;
@@ -527,9 +531,12 @@
       wxT = t; wxC = window.Wx && (o.mode === "live" || window.AGX) ? Wx.conditions(ev, t, o.elev) : null;
       if (wxC) { if (o.mode !== "live") { wxC.rain = wxC.snow = wxC.fog = wxC.bolt = wxC.bow = 0; }   // canvas fallback draws its own weather
         const fw = turned ? (sp.behind && sp.behind.water) : sp.water, s0 = ev.s || {};
-        wxC.wdir = s0.wdir; wxC.wind = s0.wind || wxC.wind; wxC.faceAz = turned ? (ev.sunsetAz + 180) % 360 : ev.sunsetAz;
-        wxC.sea = fw && window.AGX ? AGX.sea(sp, { dir: s0.wdir }) : null; wxC.torn = !!(window.AGX && AGX.alerts[sp.id] && AGX.alerts[sp.id].tornado) || /[?&]demo=tornado/.test(location.search); }   // canvas fallback already draws its own weather
-      { const wl = $("#pv-wxl"), tx = wxC ? Wx.label(wxC) : ""; if (wl) { wl.hidden = !tx; wl.textContent = tx; } }
+        wxC.wdir = s0.wdir; wxC.wind = s0.wind || wxC.wind; { const dm = window.AGX && AGX.sea(sp, {}); if (dm && dm.mph != null) { wxC.wind = dm.mph; wxC.wdir = dm.wdir; } } wxC.faceAz = turned ? (ev.sunsetAz + 180) % 360 : ev.sunsetAz;
+        wxC.sea = fw && window.AGX && o.mode !== "live" ? AGX.sea(sp, { dir: s0.wdir }) : null; wxC.trees = fw && sp.id === "grandview"; wxC.seaLbl = fw && window.AGX ? AGX.sea(sp, { dir: s0.wdir }) : null; wxC.torn = !!(window.AGX && AGX.alerts[sp.id] && AGX.alerts[sp.id].tornado) || /[?&]demo=tornado/.test(location.search); }   // canvas fallback already draws its own weather
+      { const wl = $("#pv-wxl"), tx = wxC ? Wx.label(wxC) : ""; if (wl) { wl.hidden = !tx; if (wl.dataset.tx !== tx || wl.dataset.o !== String(!!state.wxOpen)) { wl.dataset.tx = tx; wl.dataset.o = String(!!state.wxOpen);
+        const ic = /🌪/.test(tx) ? "🌪 Weather alert" : /🌊/.test(tx) ? "🌊 Wave info" : "☁ Weather info";
+        wl.innerHTML = state.wxOpen ? `<div class="wxp"><button class="wxx" aria-label="Close">✕</button>${tx.split("\n").map(l => `<div>${l}</div>`).join("")}</div>` : `<button class="wxc">${ic}</button>`;
+        wl.querySelector("button").onclick = e => { e.stopPropagation(); state.wxOpen = !state.wxOpen; wl.dataset.o = ""; wl.dataset.tx = ""; render(); }; } } }
       if (!wxRaf) wxRaf = requestAnimationFrame(wxLoop);
       $("#pv-time").textContent = fmtTime(t, r.tz);
       { const se = $("#pv-sea"), W2 = ev.sea && Model.seaAt(ev, t); if (se && W2) { se.querySelector("b").textContent = W2.name; se.querySelector("small").textContent = `${Math.round(W2.wind)} mph · gust ${Math.round(W2.gust)}${W2.ft != null ? ` · ${W2.ft < 1 ? "<1" : Math.round(W2.ft)} ft` : ""}`; se.title = W2.txt; } }
@@ -667,6 +674,14 @@
       <h3>Satellite imagery read <small>pixel heuristic on GOES tiles — secondary to the NOAA L2 products above</small> <span class="src est">Estimate</span></h3>
       <div id="satread" class="satread"><div class="shimmer">Sampling GOES-East visible, cirrus & infrared around this spot…</div></div>
       <div class="actions"><a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${vPos(sp).join(",")}">Directions ↗</a><button class="btn ghost" id="zoomto">Show on map</button></div>`;
+    { const st = document.querySelector(".stage"), zs = $("#pv-zoom"), zo = $("#pv-zo");
+      const setZ = z => { z = Math.max(1, Math.min(3, z)); st.style.setProperty("--z", z.toFixed(3)); zs.value = z; zo.textContent = z.toFixed(1) + "×"; };
+      if (st && zs) { zs.oninput = () => setZ(+zs.value); setZ(state.zoom || 1); zs.addEventListener("change", () => state.zoom = +zs.value);
+        let d0 = 0, z0 = 1; const dist = e => Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+        st.addEventListener("touchstart", e => { if (e.touches.length === 2) { d0 = dist(e); z0 = +zs.value; } }, { passive: true });
+        st.addEventListener("touchmove", e => { if (e.touches.length === 2 && d0) { e.preventDefault(); setZ(z0 * dist(e) / d0); state.zoom = +zs.value; } }, { passive: false });
+        st.addEventListener("touchend", () => { d0 = 0; }, { passive: true });
+        st.addEventListener("dblclick", () => { setZ(1); state.zoom = 1; }); } }
     document.body.classList.add("detail-open");
     $("#detail").classList.add("open");
     el.scrollTop = keepScroll ? scroll : 0;
