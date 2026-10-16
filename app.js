@@ -512,10 +512,16 @@
     const render = () => {
       raf = 0; const t = +sl.value; state.pvT = t; state.pvSpot = sp.id;
       const back = $("#pv-back"), turned = !!state.turn && back;
-      const o = turned ? Object.assign(Preview.state(sp, ev, t), Preview.drawBehind(back, sp, ev, t), { mode: "behind" }) : PhotoStage.draw(cv, sp, ev, t, { lq: dragging });
-      if (back) back.hidden = !turned;
+      // Draft: when the view behind you is open water, render it with the same photoreal sky+water shader (sun behind camera)
+      const wOpt = () => { const m = window.AGX ? AGX.sea(sp, { dir: (ev.s || {}).wdir }) : null; return m && m.ft ? { swell: Math.min(1, m.ft / 8), phase: (t % 86400) / Math.max(4, m.per * 40) } : {}; };
+      const backWater = turned && sp.behind && sp.behind.water && window.Photoreal;
+      let o = backWater ? PhotoStage.draw(cv, Object.assign({}, sp, { far: sp.behind.far || "open", water: true, type: sp.type === "Pier" ? "Pier" : "Beach" }), ev, t, Object.assign({ lq: dragging, sunAzOff: 180 }, wOpt())) : null;
+      if (o && o.mode !== "live") o = null;
+      if (!o) o = turned ? Object.assign(Preview.state(sp, ev, t), Preview.drawBehind(back, sp, ev, t), { mode: "behind" }) : PhotoStage.draw(cv, sp, ev, t, Object.assign({ lq: dragging }, wOpt()));
+      const turnedIll = turned && o.mode === "behind";
+      if (back) back.hidden = !turnedIll;
       { const d = $("#pv-dir"), az = turned ? (ev.sunsetAz + 180) % 360 : ev.sunsetAz; if (d) d.textContent = (turned ? "↻ Behind you · facing " : "Facing ") + compass(az) + " " + Math.round(az) + "°"; }
-      if (turned) { ph.forEach(im => im.style.opacity = 0); if (badge) badge.textContent = o.bow ? `🌈 Rainbow ${ev.bonus.bow.p}% in view · 180° view · illustrated` : "180° view behind you · illustrated · not a photo"; }
+      if (turned) { ph.forEach(im => im.style.opacity = 0); if (badge) badge.textContent = !turnedIll ? "180° view · realistic render from forecast" : o.bow ? `🌈 Rainbow ${ev.bonus.bow.p}% in view · 180° view · illustrated` : "180° view behind you · illustrated · not a photo"; }
       else showPhotos(t);
       if (dragging && o.mode === "live") { clearTimeout(hqT); hqT = setTimeout(() => { dragging = false; queue(); }, 160); }
       wxT = t; wxC = window.Wx && (o.mode === "live" || window.AGX) ? Wx.conditions(ev, t, o.elev) : null;

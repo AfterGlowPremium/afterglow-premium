@@ -46,7 +46,7 @@
       const fall = ((t / 30) % 1 + 1) % 1 + now * (C.snow ? 0.00015 : 0.0008);
       x.save();
       if (C.snow) { x.fillStyle = "rgba(255,255,255,.75)"; for (const d of drops) { const y = ((d[1] + fall * d[2]) % 1) * H, xx = (((d[0] + slant * 0.2 * y / H) % 1) + 1) % 1 * W; x.beginPath(); x.arc(xx, y, 1 + d[2], 0, 6.283); x.fill(); } }
-      else { x.strokeStyle = "rgba(205,215,232,.42)"; x.lineWidth = 1; x.beginPath();
+      else { x.filter = "blur(0.7px)"; x.strokeStyle = "rgba(205,215,232,.26)"; x.lineWidth = 1; x.beginPath();
         for (const d of drops) { const y = ((d[1] + fall * d[2]) % 1) * (H + 30) - 15, xx = (((d[0] + slant * 0.3 * y / H) % 1) + 1) % 1 * W, L = 9 + 13 * d[2]; x.moveTo(xx, y); x.lineTo(xx + slant * L, y + L); }
         x.stroke();
         const gr = x.createLinearGradient(0, hz - H * 0.22, 0, hz + 6); gr.addColorStop(0, "rgba(110,116,132,0)"); gr.addColorStop(1, `rgba(110,116,132,${0.3 * C.rain})`); x.fillStyle = gr; x.fillRect(0, hz - H * 0.22, W, H * 0.22 + 6); }
@@ -65,44 +65,34 @@
   }
   // Surf/sea layer: wave rows scale with height; chop & ripple density with wind; offshore = smooth glassy faces that
   // stand up, pitch and barrel (spray blown back off the lip); combo swell = peaky A-frames; rows angle with swell dir.
+  // Draft v2: the photoreal shader owns the water (chop, ripples, reflection breakup, swell shading). This layer only adds
+  // soft, blurred, sky-lit whitewater lines for surf >= 3 ft — offshore: thin feathering lips; onshore: wider foam; combo: broken peaks.
   function sea(x, W, H, hz, C, now) {
-    const S = C.sea, ft = clamp(S.ft, 0, 15), wind = C.wind || 0, chop = S.off ? clamp(wind / 40) * 0.25 : clamp(wind / 25);
-    const rel = S.dir != null && C.faceAz != null ? Math.sin(((S.dir + 180) - C.faceAz) * Math.PI / 180) : 0;   // swell angle across view
-    x.save();
-    // ripples / chop with reflections broken up by it
-    const n = Math.round(40 + 260 * chop);
-    for (let i = 0; i < n; i++) { const yy = hz + 2 + Math.pow((i * 0.618) % 1, 1.6) * (H - hz), d = (yy - hz) / (H - hz), xx = (((i * 0.377 + now * 0.00002 * (1 + d)) % 1)) * W, L = (6 + 40 * d) * (0.4 + chop);
-      x.strokeStyle = `rgba(255,255,255,${(0.05 + 0.12 * chop) * (0.4 + d)})`; x.lineWidth = 0.6 + d * 1.4; x.beginPath(); x.moveTo(xx, yy); x.lineTo(xx + L, yy + L * 0.05 * rel); x.stroke(); }
-    if (S.surf && ft >= 0.8) {
-      const rows = 3, per = S.per || 8;
-      for (let r = 0; r < rows; r++) {
-        const ph = ((now / (per * 1000)) + r / rows) % 1, d = 0.25 + ph * 0.6, y = hz + (H - hz) * d, amp = ft * (4 + 26 * d) * (H / 800), tilt = rel * 40 * d;
-        const g = x.createLinearGradient(0, y - amp, 0, y + amp * 0.3); g.addColorStop(0, `rgba(40,70,85,${0.0})`); g.addColorStop(0.55, `rgba(30,60,72,${0.55})`); g.addColorStop(1, `rgba(20,40,50,.0)`);
-        x.fillStyle = g; x.beginPath(); x.moveTo(0, y + tilt);
-        const peaks = S.combo ? 4 : 1;
-        for (let k = 0; k <= 48; k++) { const u = k / 48, pk = S.combo ? Math.pow(Math.abs(Math.sin(u * Math.PI * peaks + r)), 3) : 0.75 + 0.25 * Math.sin(u * 6 + r);
-          x.lineTo(u * W, y + tilt * (1 - 2 * u) - amp * pk); }
-        x.lineTo(W, y + amp * 0.3); x.lineTo(0, y + amp * 0.3); x.closePath(); x.fill();
-        // lip / whitewater: offshore → thin clean feathering lip + curling barrel shade; onshore → crumbly foam
-        const br = ph > 0.55;
-        x.strokeStyle = `rgba(245,250,255,${br ? (S.off ? 0.75 : 0.55) : 0.18})`; x.lineWidth = S.off ? 1.6 : 3 + chop * 4; x.beginPath();
-        for (let k = 0; k <= 48; k++) { const u = k / 48, pk = S.combo ? Math.pow(Math.abs(Math.sin(u * Math.PI * peaks + r)), 3) : 0.75 + 0.25 * Math.sin(u * 6 + r), jit = S.off ? 0 : Math.sin(u * 90 + now * 0.004) * chop * 3;
-          const yy = y + tilt * (1 - 2 * u) - amp * pk + jit; k ? x.lineTo(u * W, yy) : x.moveTo(u * W, yy); }
-        x.stroke();
-        if (br && S.off && ft >= 3) { const bx = ((r * 0.37 + ph) % 1) * W, bw = amp * 1.6; x.fillStyle = "rgba(8,22,30,.55)"; x.beginPath(); x.ellipse(bx, y - amp * 0.45, bw, amp * 0.42, 0, 0, Math.PI * 2); x.fill();
-          x.fillStyle = "rgba(255,255,255,.25)"; for (let k = 0; k < 14; k++) x.fillRect(bx - bw + k * bw / 7, y - amp * (1.05 + 0.2 * Math.sin(k + now * 0.01)), 2, 1); }   // offshore spray off the lip
-        if (br && !S.off) { x.fillStyle = `rgba(240,245,250,${0.25 + chop * 0.3})`; x.fillRect(0, y - amp * 0.2, W, amp * 0.35 * ph); }
+    const S = C.sea; if (!S || !S.surf || S.ft < 3) return;
+    const ft = clamp(S.ft, 0, 15), per = S.per || 9, rel = S.dir != null && C.faceAz != null ? Math.sin(((S.dir + 180) - C.faceAz) * Math.PI / 180) : 0;
+    x.save(); x.globalCompositeOperation = "screen";
+    for (let r = 0; r < 3; r++) {
+      const ph = ((now / (per * 1000)) + r / 3) % 1, d = 0.12 + ph * 0.75, y = hz + (H - hz) * d * 0.9, a = Math.sin(ph * Math.PI) * clamp(ft / 8, 0.25, 0.8);
+      const thick = (S.off ? 1.2 : 3) * (1 + d * 3) * (ft / 4), blur = 1.5 + d * 3;
+      x.filter = `blur(${blur.toFixed(1)}px)`;
+      for (let k = 0; k < 90; k++) {
+        const u = k / 90, peak = S.combo ? Math.pow(Math.abs(Math.sin(u * Math.PI * 3 + r * 1.7)), 2) : 1, n = Math.sin(u * 37 + r * 5 + now * 0.0007) * 0.5 + 0.5;
+        const on = S.off ? (n > 0.35 && peak > 0.4) : n > 0.15;
+        if (!on) continue;
+        const yy = y + rel * 30 * d * (1 - 2 * u) - peak * thick * 0.6, al = a * (0.35 + 0.4 * n) * (S.combo ? peak : 1);
+        x.fillStyle = `rgba(255,236,226,${al.toFixed(3)})`; x.fillRect(u * W, yy, W / 90 + 1, thick * (0.6 + n));
+        if (!S.off && ph > 0.5) { x.fillStyle = `rgba(235,225,230,${(al * 0.35).toFixed(3)})`; x.fillRect(u * W, yy + thick, W / 90 + 1, thick * 2.5 * ph); }   // soupy foam behind the break
       }
     }
     x.restore();
   }
-  function tornado(x, W, H, hz, now) {   // NWS Tornado Warning only: rope/cone funnel under a dark wall cloud, debris at the ground
-    const cx = W * 0.7 + Math.sin(now * 0.0004) * W * 0.03, top = hz - H * 0.42;
-    let g = x.createRadialGradient(cx, top, 10, cx, top, W * 0.5); g.addColorStop(0, "rgba(30,32,38,.85)"); g.addColorStop(1, "rgba(30,32,38,0)"); x.fillStyle = g; x.fillRect(0, 0, W, hz);
-    x.save();
-    for (let i = 0; i < 60; i++) { const u = i / 60, y = top + u * (hz - top), w = (1 - u) * W * 0.07 + 3, sx = cx + Math.sin(u * 4 + now * 0.002) * W * 0.02 * u;
-      x.fillStyle = `rgba(70,72,78,${0.5 + 0.3 * (1 - u)})`; x.fillRect(sx - w / 2, y, w, (hz - top) / 60 + 1); }
-    for (let i = 0; i < 40; i++) { const a = i * 2.4 + now * 0.003, r = 10 + (i % 7) * 6; x.fillStyle = "rgba(90,80,70,.5)"; x.fillRect(cx + Math.cos(a) * r, hz - 4 - Math.abs(Math.sin(a)) * r * 0.6, 2, 2); }
+  function tornado(x, W, H, hz, now) {   // NWS Tornado Warning only: soft translucent condensation funnel under a dark wall cloud, rain-wrapped
+    const cx = W * 0.7 + Math.sin(now * 0.0004) * W * 0.02, top = hz - H * 0.4;
+    x.save(); x.filter = "blur(10px)"; let g = x.createRadialGradient(cx, top, 5, cx, top, W * 0.55); g.addColorStop(0, "rgba(25,27,32,.7)"); g.addColorStop(1, "rgba(25,27,32,0)"); x.fillStyle = g; x.fillRect(0, 0, W, hz);
+    x.filter = "blur(2.5px)";
+    for (let i = 0; i < 80; i++) { const u = i / 80, y = top + u * (hz - top), w = Math.pow(1 - u, 1.6) * W * 0.09 + 4, sx = cx + Math.sin(u * 3.5 + now * 0.0015) * W * 0.025 * u;
+      const gg = x.createLinearGradient(sx - w, 0, sx + w, 0); gg.addColorStop(0, "rgba(90,92,100,0)"); gg.addColorStop(0.5, `rgba(85,86,94,${0.38 + 0.2 * (1 - u)})`); gg.addColorStop(1, "rgba(90,92,100,0)"); x.fillStyle = gg; x.fillRect(sx - w, y, 2 * w, (hz - top) / 80 + 1); }
+    x.filter = "blur(6px)"; x.fillStyle = "rgba(110,100,92,.35)"; x.beginPath(); x.ellipse(cx, hz - 6, W * 0.05, 9, 0, 0, 6.283); x.fill();
     x.restore();
   }
   function label(C) {
