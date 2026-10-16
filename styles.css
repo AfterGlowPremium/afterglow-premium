@@ -521,7 +521,7 @@ body.in-archive .hero{outline:1px dashed rgba(181,169,255,.5)}
 
 /* DRAFT: zoom + corner wave panel */
 .stage{--z:1}
-.stage canvas,.stage .pv-photo{transform:scale(var(--z));transform-origin:50% 58%;transition:transform .12s ease-out;will-change:transform}
+
 .zoom-row{display:flex;align-items:center;gap:10px;margin:10px 2px 2px}
 .zoom-row .zl{font:600 12px Inter,sans-serif;letter-spacing:.06em;text-transform:uppercase;opacity:.7}
 .zoom-row input{flex:1;accent-color:#ff9a5a;height:22px}
@@ -533,3 +533,10 @@ body.in-archive .hero{outline:1px dashed rgba(181,169,255,.5)}
 .stage .pv-wxl .wxc{font:600 12px Inter,sans-serif;color:#fff;padding:6px 11px;border-radius:999px;background:rgba(14,16,28,.42);border:1px solid rgba(255,255,255,.22);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
 .stage .pv-wxl .wxp{position:relative;padding:9px 30px 9px 12px;border-radius:14px;background:rgba(14,16,28,.5);border:1px solid rgba(255,255,255,.18);backdrop-filter:blur(12px) saturate(1.2);-webkit-backdrop-filter:blur(12px) saturate(1.2);font:600 11.5px/1.45 Inter,sans-serif;color:#fff;box-shadow:0 6px 24px rgba(0,0,0,.25)}
 .stage .pv-wxl .wxx{position:absolute;top:5px;right:6px;width:20px;height:20px;border-radius:50%;border:0;background:rgba(255,255,255,.14);color:#fff;font-size:11px;line-height:20px;padding:0}
+
+/* overflow fix: detail sheet never wider than the phone */
+#detail,#detail-body{max-width:100vw;overflow-x:hidden;box-sizing:border-box}
+.stage .pv-wxl{right:14px}
+#music-btn{position:fixed;left:12px;bottom:14px;z-index:950;width:42px;height:42px;border-radius:50%;border:1px solid rgba(255,255,255,.25);background:rgba(14,16,28,.55);color:#fff;font-size:18px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+#music-btn.on{background:rgba(255,154,90,.85);color:#111}
+#music-btn.off::after{content:"";position:absolute;left:9px;right:9px;top:50%;height:2px;background:#fff;transform:rotate(-40deg)}

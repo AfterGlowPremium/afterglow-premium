@@ -441,7 +441,7 @@
         <div class="scrub-marks">${marks.map((m, k) => `<button data-t="${m[1]}" style="left:${pct(m[1])}%" class="mk ${m[0]} ${k % 2 ? "alt" : ""}"><i></i><span class="lf">${m[2]}</span><span class="ls">${m[3]}</span><em>${fmtTime(m[1], r.tz).replace(/ [A-Z]{2,4}$/, "")}</em></button>`).join("")}</div>
         <input id="scrub" type="range" min="${t0}" max="${t1}" step="20" value="${T.peak}" aria-label="Time of ${RISE ? "morning" : "evening"}">
         <div class="scrub-row"><button id="pv-play" class="play">${PLAY}</button><button id="pv-turn" class="play turn" aria-pressed="false" title="Turn around and see the sky behind you (${RISE ? "west" : "east"}) — where rainbows appear">↻ 180° Turn</button><span id="pv-what" class="pv-what"></span></div>
-        <div class="zoom-row"><span class="zl">Zoom</span><input id="pv-zoom" type="range" min="1" max="3" step="0.01" value="1" aria-label="Zoom into the scene"><output id="pv-zo">1.0×</output></div>
+        <div class="zoom-row"><span class="zl">Zoom</span><input id="pv-zoom" type="range" min="1" max="4" step="0.01" value="1" aria-label="Zoom into the scene"><output id="pv-zo">1.0×</output></div>
       </div>
       <div class="readout">
         ${chip("High", Math.round(s.high) + "%", types.high || "", P.clouds)}
@@ -514,8 +514,8 @@
       raf = 0; const t = +sl.value; state.pvT = t; state.pvSpot = sp.id;
       const back = $("#pv-back"), turned = !!state.turn && back;
       // Draft: when the view behind you is open water, render it with the same photoreal sky+water shader (sun behind camera)
-      const wOpt = () => { const m = window.AGX ? AGX.sea(sp, { dir: (ev.s || {}).wdir, mph: (ev.s || {}).wind }) : null; if (!m || !m.ft) return {}; const r = { swell: Math.min(1, m.ft / 8), phase: (t % 86400) / Math.max(4, m.per * 40) };
-        if (m.surf && m.ft >= 3) Object.assign(r, { surf: m.ft * 0.3048, off: m.off ? 1 : 0, surfT: (t % 900) + performance.now() / 1000 * 0, surfL: Math.max(30, Math.min(70, (m.per || 10) * 4.2)) });
+      const wOpt = () => { const m = window.AGX ? AGX.sea(sp, { dir: (ev.s || {}).wdir, mph: (ev.s || {}).wind }) : null; const zf = { fovMul: 1 / (state.zoom || 1) }; if (!m || !m.ft) return zf; const r = { fovMul: zf.fovMul, swell: Math.min(1, m.ft / 8), phase: (t % 86400) / Math.max(4, m.per * 40) };
+        if (m.surf && m.ft >= 1.5) Object.assign(r, { surf: m.ft * 0.3048, off: m.off ? 1 : 0, surfT: (t % 900) + performance.now() / 1000 * 0, surfL: Math.max(30, Math.min(70, (m.per || 10) * 4.2)) });
         if (m.wl) { Object.assign(r, { chop: m.wl.chop, caps: m.wl.caps }); if (r.surf) r.off = m.wl.off; }
         return r; };
       const backWater = turned && sp.behind && sp.behind.water && window.Photoreal;
@@ -546,7 +546,7 @@
       $("#pv-what").textContent = parts.length ? parts.join(" · ") : (o.elev > 0 ? "Clear sky: clean gradient, little canvas" : "Clear sky: horizon band fading");
       document.querySelectorAll(".scrub .mk").forEach(b => b.classList.toggle("on", Math.abs(+b.dataset.t - t) < 90));
     };
-    const queue = () => { if (!raf) raf = requestAnimationFrame(render); };
+    const queue = () => { if (!raf) raf = requestAnimationFrame(render); }; window.__agQueue = queue;
     let wxT = 0, wxC = null, wxRaf = 0;
     const wxLoop = now => { wxRaf = 0; const wc = $("#pv-wx"); if (!wc || !document.body.contains(cv)) return;
       if (wxC) Wx.draw(wc, wxC, wxT, now); else { const c2 = wc.getContext("2d"); c2.setTransform(1, 0, 0, 1, 0, 0); c2.clearRect(0, 0, wc.width, wc.height); }
@@ -675,8 +675,8 @@
       <div id="satread" class="satread"><div class="shimmer">Sampling GOES-East visible, cirrus & infrared around this spot…</div></div>
       <div class="actions"><a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${vPos(sp).join(",")}">Directions ↗</a><button class="btn ghost" id="zoomto">Show on map</button></div>`;
     { const st = document.querySelector(".stage"), zs = $("#pv-zoom"), zo = $("#pv-zo");
-      const setZ = z => { z = Math.max(1, Math.min(3, z)); st.style.setProperty("--z", z.toFixed(3)); zs.value = z; zo.textContent = z.toFixed(1) + "×"; };
-      if (st && zs) { zs.oninput = () => setZ(+zs.value); setZ(state.zoom || 1); zs.addEventListener("change", () => state.zoom = +zs.value);
+      const setZ = z => { z = Math.max(1, Math.min(4, z)); state.zoom = z; zs.value = z; zo.textContent = z.toFixed(1) + "×"; window.__agQueue && __agQueue(); };
+      if (st && zs) { zs.oninput = () => setZ(+zs.value); { const S0 = window.AGX && AGX.sea(state.results.find(x => x.spot.id === id).spot, {}); setZ(keepScroll ? (state.zoom || 1) : (S0 && S0.surf && S0.ft >= 1.5 ? 2.2 : 1)); } zs.addEventListener("change", () => state.zoom = +zs.value);
         let d0 = 0, z0 = 1; const dist = e => Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
         st.addEventListener("touchstart", e => { if (e.touches.length === 2) { d0 = dist(e); z0 = +zs.value; } }, { passive: true });
         st.addEventListener("touchmove", e => { if (e.touches.length === 2 && d0) { e.preventDefault(); setZ(z0 * dist(e) / d0); state.zoom = +zs.value; } }, { passive: false });
