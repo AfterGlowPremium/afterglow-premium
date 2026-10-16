@@ -514,8 +514,8 @@
       raf = 0; const t = +sl.value; state.pvT = t; state.pvSpot = sp.id;
       const back = $("#pv-back"), turned = !!state.turn && back;
       // Draft: when the view behind you is open water, render it with the same photoreal sky+water shader (sun behind camera)
-      const wOpt = () => { const m = window.AGX ? AGX.sea(sp, { dir: (ev.s || {}).wdir, mph: (ev.s || {}).wind }) : null; const zf = { fovMul: 1 / (state.zoom || 1) }; if (!m || !m.ft) return zf; const r = { fovMul: zf.fovMul, swell: Math.min(1, m.ft / 8), phase: (t % 86400) / Math.max(4, m.per * 40) };
-        if (m.surf && m.ft >= 1.5) Object.assign(r, { surf: m.ft * 0.3048, off: m.off ? 1 : 0, surfT: (t % 900) + performance.now() / 1000 * 0, surfL: Math.max(30, Math.min(70, (m.per || 10) * 4.2)) });
+      const wOpt = () => { const m = window.AGX ? AGX.sea(sp, { dir: (ev.s || {}).wdir, mph: (ev.s || {}).wind }) : null; const zf = { fovMul: 1 / (state.zoom || 1) }; if (/[?&]sky=clear/.test(location.search)) Object.assign(zf, { high: 0.12, mid: 0, low: 0, block: 0, gap: 1 }); if (!m || !m.ft) return zf; const r = { ...zf, swell: Math.min(1, m.ft / 8), phase: (t % 86400) / Math.max(4, m.per * 40) };
+        if (m.surf && m.ft >= 1.5) Object.assign(r, { surf: m.ft * 0.3048, off: m.off ? 1 : 0, surfT: (t % 900) + performance.now() / 1000, surfL: Math.max(30, Math.min(70, (m.per || 10) * 4.2)) });
         if (m.wl) { Object.assign(r, { chop: m.wl.chop, caps: m.wl.caps }); if (r.surf) r.off = m.wl.off; }
         return r; };
       const backWater = turned && sp.behind && sp.behind.water && window.Photoreal;
@@ -523,6 +523,7 @@
       if (o && o.mode !== "live") o = null;
       if (!o) o = turned ? Object.assign(Preview.state(sp, ev, t), Preview.drawBehind(back, sp, ev, t), { mode: "behind" }) : PhotoStage.draw(cv, sp, ev, t, Object.assign({ lq: dragging }, wOpt()));
       const turnedIll = turned && o.mode === "behind";
+      if (o.mode === "live" && (window.PhotoStage && PhotoStage.last && PhotoStage.last.surf) && document.body.contains(cv)) { clearTimeout(window.__agSurfTO); window.__agSurfTO = setTimeout(queue, 70); }   // keep the surf breaking (~12 fps)
       if (back) back.hidden = !turnedIll;
       { const d = $("#pv-dir"), az = turned ? (ev.sunsetAz + 180) % 360 : ev.sunsetAz; if (d) d.textContent = (turned ? "↻ Behind you · facing " : "Facing ") + compass(az) + " " + Math.round(az) + "°"; }
       if (turned) { ph.forEach(im => im.style.opacity = 0); if (badge) badge.textContent = !turnedIll ? "180° view · realistic render from forecast" : o.bow ? `🌈 Rainbow ${ev.bonus.bow.p}% in view · 180° view · illustrated` : "180° view behind you · illustrated · not a photo"; }

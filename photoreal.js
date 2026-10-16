@@ -508,11 +508,11 @@ void main(){
       // direct sun on the waves: evening (sun behind viewer) = warm lit faces + golden glints; morning (sun ahead) = backlit
       vec3 sL = ESUN * sunAtm * sunVis * smoothstep(-.015, .02, uSunA.y) * .045;
       float fwd = max(dot(rd, uSunA), 0.), front = max(dot(n, uSunA), 0.);
-      c += sL * front * (.35 + .65 * faceZ) * vec3(1., .9, .78) * (1. - F) * .55;                         // front-lit face (sunset, sun at your back)
+      c += sL * front * (.35 + .65 * faceZ) * vec3(1., .82, .55) * (1. - F) * 1.4;   // golden-hour light straight onto the face                         // front-lit face (sunset, sun at your back)
       c += sL * pow(max(dot(reflect(rd, n), uSunA), 0.), 60.) * .8;                                      // golden glints on the groomed lines
-      c += sL * pow(fwd, 6.) * thin * vec3(.35, .75, .6) * 2.2;                                           // sun shining THROUGH the thin face (sunrise)
+      c += sL * pow(fwd, 6.) * thin * vec3(.55, .8, .35) * 5.;   // sunrise: green-gold glow through the thin upper face                                           // sun shining THROUGH the thin face (sunrise)
       c *= mix(1., mix(.75, 1.2, smoothstep(.86, 1., x)), faceZ);                                          // shading gradient up the face: trough dark, lip bright
-      fc += sL * (front * .6 + pow(fwd, 4.) * 1.6) * vec3(1., .85, .7);                                    // whitewater catches sun: lit (evening) / glowing rim (morning)
+      fc += sL * (front * 1.2 + pow(fwd, 4.) * 2.5) * vec3(1., .82, .6);                                    // whitewater catches sun: lit (evening) / glowing rim (morning)
       // face streaks peeling down the wall + hollow throat just under the lip where a section is pitching (Sean's refs)
       float strk = fbm(vec2(q.x * .9 + uSeed.x, x * 55.), 0., 4);
       c *= mix(1., .82 + .36 * strk, faceZ);
@@ -521,7 +521,7 @@ void main(){
       { float pl = surfPeel(q), curl = smoothstep(-1., -.15, pl) * (1. - smoothstep(.15, .6, pl)) * brk;
         c *= 1. - .55 * curl * faceZ * (1. - smoothstep(.9, .99, x));                                   // shadowed pocket under the lip
         foam = max(foam, smoothstep(.0, .6, pl) * brk * smoothstep(.4, .7, tex) * (smoothstep(.6, 1., x) + smoothstep(.3, 0., x)));   // whitewater behind the peel
-        c += sL * pow(fwd, 3.) * smoothstep(.95, 1., x) * vec3(.5, .75, .35) * 1.6; }                    // light through the top third when backlit
+        c += sL * pow(fwd, 3.) * smoothstep(.95, 1., x) * vec3(.6, .8, .35) * 4.; }                    // light through the top third when backlit
       c = mix(c, fc * (.75 + .5 * tex), foam);
       if (lipHit > .5){   // the thrown lip: thin, translucent olive-green sheet, lit through when backlit, white feathered edge
         vec3 lc = hz2 * vec3(.16, .2, .11) * 1.4 + sL * (pow(fwd, 3.) * vec3(.6, .85, .4) * 2.2 + front * .3);
@@ -531,7 +531,7 @@ void main(){
       float fog = 1. - exp(-hitT * .001 * (BMe * 1.3 + BR.g));
       col = mix(c, hz2 * .9, clamp(fog, 0., 1.));
     }
-    if (!pierFirst) { vec3 sc = mix(vec3(dot(hz2, vec3(.2126,.7152,.0722))), hz2, .5) * 1.1 + ESUN * sunAtm * sunVis * smoothstep(-.015, .02, uSunA.y) * .05 * (pow(max(dot(rd, uSunA), 0.), 5.) * 2.5 + .25) * vec3(1., .82, .62); col = mix(col, sc, clamp(sprayA, 0., .7)); }
+    if (!pierFirst) { vec3 sc = mix(vec3(dot(hz2, vec3(.2126,.7152,.0722))), hz2, .5) * 1.1 + ESUN * sunAtm * sunVis * smoothstep(-.015, .02, uSunA.y) * .05 * (pow(max(dot(rd, uSunA), 0.), 5.) * 6. + .4) * vec3(1., .82, .62); col = mix(col, sc, clamp(sprayA, 0., .7)); }
   }
 
   // lens glare around the sun (scaled by how much sun gets through cloud)
