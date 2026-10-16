@@ -270,7 +270,8 @@ float cloudTowardSun(vec3 ro, vec3 rd){
 float pierHit(vec3 ro, vec3 rd, out float tp){
   // local metres, camera at origin; deck from z=-6 to -420, x in [-24,-19], deck top y = +1.2 (above eye-water: eye at +2.0 over water)
   tp = 1e9; float hit = 0.;
-  vec3 bmin = vec3(-24., 0.4 - 2.0 + 1.6, -420.), bmax = vec3(-19., 1.25 - 2.0 + 1.6, -6.);
+  // DRAFT: deck raised to Jennette's real scale (~6.5 m above the water) so a 6 ft face sits about a third of the way up the pilings
+  vec3 bmin = vec3(-24., 3.6, -420.), bmax = vec3(-19., 4.5, -6.);
   vec3 inv = 1./rd; vec3 t0 = (bmin - ro)*inv, t1 = (bmax - ro)*inv;
   vec3 tn = min(t0,t1), tf = max(t0,t1); float a = max(max(tn.x,tn.y),tn.z), b = min(min(tf.x,tf.y),tf.z);
   if (b > max(a,0.)){ tp = a; hit = 1.; }
@@ -286,6 +287,9 @@ float pierHit(vec3 ro, vec3 rd, out float tp){
     float fr = abs(fract(q.z/3.) - .5)*3.;
     if (q.y > bmax.y && q.y < bmax.y + 1.05 && (fr < .07 + t*.0006 || abs(q.y - (bmax.y+1.)) < .06 + t*.0005 || abs(q.y - (bmax.y+.5)) < .03 + t*.0004)){ tp = t; hit = 1.; }
   }
+  { vec3 hmin = vec3(-25., 4.5, -418.), hmax = vec3(-18., 8.5, -400.); vec3 a0 = (hmin - ro)*inv, a1 = (hmax - ro)*inv; vec3 n0 = min(a0,a1), f0 = max(a0,a1);   // end house
+    float ha = max(max(n0.x,n0.y),n0.z), hb = min(min(f0.x,f0.y),f0.z); if (hb > max(ha,0.) && ha < tp){ tp = ha; hit = 1.; } }
+  { float t = (-21.5 - ro.x) / rd.x; if (t > 0. && t < tp){ vec3 q = ro + rd*t; if (abs(q.z + 300.) < .5 + t*.0008 && q.y > 4.5 && q.y < 42.){ tp = t; hit = 1.; } } }   // wind-turbine pole
   return hit;
 }
 
@@ -299,7 +303,7 @@ float surfH(vec2 p){
   float env = surfEnv(p); if (env <= 0.) return 0.;
   float d = -p.y, x = surfX(p), sec = surfSec(p);
   float brk = smoothstep(110., 40., d) * sec * smoothstep(.35, 1.7, uSurf);   // closer in = steeper, about to pitch
-  float fw = mix(.1, .022, brk);                                    // face width as a fraction of the spacing
+  float fw = mix(.1, mix(.06, .022, clamp(uOff + 1. - uChop, 0., 1.)), brk);                                    // face width as a fraction of the spacing
   float back = pow(1. - smoothstep(0., .78, x), 1.7);
   float face = pow(smoothstep(1. - fw, 1., x), 1.1 + 2.2 * brk);
   float h = max(back, face);
@@ -466,17 +470,18 @@ void main(){
       vec3 p = rd * t; float h = -camM + surfH(p.xz), dy = p.y - h;
       // curling lip: a thin sheet thrown forward from the crest over the pocket, only on the pitching section by the peel front
       { float x = surfX(p.xz), d = -p.z, sec = surfSec(p.xz), brk = smoothstep(110., 40., d) * sec * smoothstep(.35, 1.7, uSurf), fw = mix(.1, .022, brk);
-        float pl = surfPeel(p.xz), curl = smoothstep(-1., -.15, pl) * (1. - smoothstep(.15, .6, pl)) * brk;
+        float pl = surfPeel(p.xz), curl = smoothstep(-1., -.15, pl) * (1. - smoothstep(.15, .6, pl)) * brk * smoothstep(.15, .5, uOff + (1. - uChop) * .4);
         float u = (x - (1. - fw * 2.6)) / (fw * 2.6);
         if (curl > .25 && uSurf > 1.05 && u > .05 && u < 1.){ float Ht = uSurf * surfEnv(p.xz) * sec * (1. + .35 * brk) * .68;
           float yl = -camM + Ht * (1. - .55 * pow(1. - u, 2.)) , th = (.12 + .5 * u) * curl;
           if (p.y < yl && p.y > yl - th){ hitT = t; lipHit = 1.; lipU = u; break; } } }
       if (dy < 0.){ float a = t - max(.25, t*.004), b = t; for (int k = 0; k < 6; k++){ float m = (a+b)*.5; vec3 q = rd*m; if (q.y < -camM + surfH(q.xz)) b = m; else a = m; } hitT = b; break; }
       // offshore spray: mist above and seaward of the crest, blown back off the lip
-      if (uOff > .05 && dy < 3.5){ float x = surfX(p.xz), e = surfEnv(p.xz) * smoothstep(120., 40., -p.z) * surfSec(p.xz);
-        float behind = smoothstep(.16, .0, x) * smoothstep(-.02, .015, x);
+      if (uOff > .05 && dy < 6.){ float x = surfX(p.xz), e = surfEnv(p.xz) * smoothstep(140., 35., -p.z) * mix(.6, 1., surfSec(p.xz));
+        float plume = .08 + .3 * uOff;   // spindrift trails farther back with stronger offshore wind
+        float behind = smoothstep(plume, .0, x) * smoothstep(-.02, .012, x);
         float nz = fbm(vec2(p.x * .35 + uSurfT * .8, p.y * 1.6 - uSurfT * 1.5 + p.z * .2), 0., 4);
-        sprayA += exp(-max(dy, 0.) / (.5 + 1.1 * uOff)) * behind * e * smoothstep(.42, .75, nz) * uOff * .22 * min(uSurf, 2.5) * max(.25, min(t*.004, 1.)); }
+        sprayA += exp(-max(dy, 0.) / (.6 + 2.2 * uOff)) * behind * e * smoothstep(.3, .7, nz) * uOff * .5 * min(uSurf, 2.5) * max(.25, min(t*.004, 1.)); }
       float st = max(.12, min(dy * .5, 6.)) * (t > 60. ? 1.4 : 1.); t += st; if (t > 420.) break;
     }
     vec3 Ta; vec3 hz2 = skyRay(ro, normalize(vec3(rd.x, .001, rd.z)), pixA, false, Ta);
@@ -503,14 +508,18 @@ void main(){
       float broke = smoothstep(60., 30., d) * smoothstep(.55, .8, fbm(vec2(q.x * .05 + uSeed.x, 2.), 0., 3));
       float soup = broke * (smoothstep(.82, 1., x) * .9 + smoothstep(.35, .0, x) * .5) * smoothstep(.4, .75, tex);
       float inside = smoothstep(28., 6., d) * smoothstep(.42, .72, fbm(q * vec2(.12, 1.1), 0., 5)) * .7;   // streaky foam lines left by broken waves
+      float spill = (1. - uOff) * uChop * smoothstep(.9, 1., x) * brk * smoothstep(.3, .6, tex) * 1.2;
+      float caps = uCaps * smoothstep(.66, .78, fbm(q * vec2(.25, .55) + vec2(0., uSurfT * .4), 0., 5)) * (1. - faceZ);
+      float streak = uCaps * .35 * smoothstep(.6, .8, fbm(vec2(q.x * .04, q.y * .9) + 3., 0., 4));
+      lip += spill + caps + streak;   // onshore: crumbling crests, whitecaps, wind streaks
       float foam = clamp(lip + soup + inside, 0., .95) * (1. - .5 * uOff * (1. - broke));
       vec3 fc = hz2 * .75 + refl * .25; fc = mix(vec3(dot(fc, vec3(.2126,.7152,.0722))), fc, .35) * 1.25;
       // direct sun on the waves: evening (sun behind viewer) = warm lit faces + golden glints; morning (sun ahead) = backlit
       vec3 sL = ESUN * sunAtm * sunVis * smoothstep(-.015, .02, uSunA.y) * .045;
       float fwd = max(dot(rd, uSunA), 0.), front = max(dot(n, uSunA), 0.);
-      c += sL * front * (.35 + .65 * faceZ) * vec3(1., .82, .55) * (1. - F) * 1.4;   // golden-hour light straight onto the face                         // front-lit face (sunset, sun at your back)
+      c += sL * front * (.35 + .65 * faceZ) * vec3(1., .85, .62) * (1. - F) * .8;   // golden-hour light straight onto the face                         // front-lit face (sunset, sun at your back)
       c += sL * pow(max(dot(reflect(rd, n), uSunA), 0.), 60.) * .8;                                      // golden glints on the groomed lines
-      c += sL * pow(fwd, 6.) * thin * vec3(.55, .8, .35) * 5.;   // sunrise: green-gold glow through the thin upper face                                           // sun shining THROUGH the thin face (sunrise)
+      c += sL * pow(fwd, 6.) * thin * vec3(.55, .8, .35) * 3.;   // sunrise: green-gold glow through the thin upper face                                           // sun shining THROUGH the thin face (sunrise)
       c *= mix(1., mix(.75, 1.2, smoothstep(.86, 1., x)), faceZ);                                          // shading gradient up the face: trough dark, lip bright
       fc += sL * (front * 1.2 + pow(fwd, 4.) * 2.5) * vec3(1., .82, .6);                                    // whitewater catches sun: lit (evening) / glowing rim (morning)
       // face streaks peeling down the wall + hollow throat just under the lip where a section is pitching (Sean's refs)
@@ -521,7 +530,7 @@ void main(){
       { float pl = surfPeel(q), curl = smoothstep(-1., -.15, pl) * (1. - smoothstep(.15, .6, pl)) * brk;
         c *= 1. - .55 * curl * faceZ * (1. - smoothstep(.9, .99, x));                                   // shadowed pocket under the lip
         foam = max(foam, smoothstep(.0, .6, pl) * brk * smoothstep(.4, .7, tex) * (smoothstep(.6, 1., x) + smoothstep(.3, 0., x)));   // whitewater behind the peel
-        c += sL * pow(fwd, 3.) * smoothstep(.95, 1., x) * vec3(.6, .8, .35) * 4.; }                    // light through the top third when backlit
+        c += sL * pow(fwd, 3.) * smoothstep(.95, 1., x) * vec3(.6, .8, .35) * 2.5; }                    // light through the top third when backlit
       c = mix(c, fc * (.75 + .5 * tex), foam);
       if (lipHit > .5){   // the thrown lip: thin, translucent olive-green sheet, lit through when backlit, white feathered edge
         vec3 lc = hz2 * vec3(.16, .2, .11) * 1.4 + sL * (pow(fwd, 3.) * vec3(.6, .85, .4) * 2.2 + front * .3);
