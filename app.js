@@ -523,8 +523,8 @@
         if (wxq === "fog") Object.assign(zf, { rh: 0.99, aod: 0.9, low: 0.5, block: 0.6 });
         if (wxq === "rain") Object.assign(zf, { high: 0.5, mid: 0.9, low: 0.95, block: 1, gap: 0, aod: 0.35, rh: 0.95 });
         if (wxq === "storm") Object.assign(zf, { high: 0.7, mid: 0.9, low: 0.9, block: 0.85, gap: 0.25, aod: 0.3, rh: 0.92 }); } if (!m || !m.ft) return zf; const r = { ...zf, swell: Math.min(1, m.ft / 8), phase: (t % 86400) / Math.max(4, m.per * 40) };
-        if (m.surf && m.ft >= 1.5) Object.assign(r, { hero: !/[?&]hero=0/.test(location.search), heroD: 9 + m.ft * 1.1, heroCam: 0.0007, surf: m.ft * 0.3048, off: m.off ? 1 : 0, surfT: window.__agSurfT != null ? window.__agSurfT : (t % 900) + performance.now() / 1000, surfL: Math.max(30, Math.min(70, (m.per || 10) * 4.2)) });
-        if (m.wl) { Object.assign(r, { chop: m.wl.chop, caps: m.wl.caps }); if (r.surf) r.off = m.wl.off; if (r.hero && !heroWind(m.wl)) r.hero = false; }
+        if (m.surf && m.ft >= 1.5) Object.assign(r, { hero: !/[?&]hero=0/.test(location.search), heroD: 9 + m.ft * 1.1, heroCam: 0.0016, person: !/[?&]person=0/.test(location.search), mess: m.ft <= 2.2 ? 0.38 : 0, surf: m.ft * 0.3048, off: m.off ? 1 : 0, surfT: window.__agSurfT != null ? window.__agSurfT : (t % 900) + performance.now() / 1000, surfL: Math.max(30, Math.min(70, (m.per || 10) * 4.2)) });
+        if (m.wl) { Object.assign(r, { chop: m.wl.chop, caps: m.wl.caps }); if (r.surf) r.off = m.wl.off; if (r.hero && !heroWind(m.wl)) r.mess = Math.max(r.mess || 0, 0.3, Math.min(1, (m.wl.kt - 3) / 13)) * (/^onshore|light onshore/.test(m.wl.look) ? 1 : 0.55); }
         // architecture: forecast → classes → look dials (looks.js); the renderer reads only the dials
         if (window.Looks) { const s0 = ev.s || {}, qp = new URLSearchParams(location.search), wxq = qp.get("wx"), skq = qp.get("sky");
           const cls = Looks.classify(sp, { low: s0.low != null ? s0.low / 100 : null, mid: s0.mid != null ? s0.mid / 100 : null, high: s0.high != null ? s0.high / 100 : null, precip: s0.precip, pp: s0.pprob, code: s0.code, cape: s0.cape, vis: s0.vis,
@@ -534,7 +534,7 @@
           const D = Looks.dials(cls, m); window.__agDials = D;
           Object.assign(r, { tint: D.waterTint, back: D.backlight, chop: D.roughness, caps: D.whitecaps });
           if (r.surf) r.off = Math.max(D.off, D.spindrift * 0.9); if (!D.surf) { delete r.surf; delete r.hero; }
-          if (r.hero && !(D.wind === "offshore" || D.wind === "calm")) { r.hero = false; r.off = 0; r.heroCam = 0.0012; r.caps = Math.max(r.caps || 0, 0.25 + 0.5 * (r.chop || 0)); r.chop = Math.max(r.chop || 0, 0.6); } }   // v16: clean barrel only offshore/calm; onshore & cross-shore → crumbly broken surf
+          if (r.surf && (D.wind === "onshore" || D.wind === "cross")) { const k = Math.max(0.3, Math.min(1, (cls.kt - 3) / 13)); r.mess = Math.max(r.mess || 0, D.wind === "onshore" ? k : 0.55 * k); r.off = 0; r.caps = Math.max(r.caps || 0, 0.2 + 0.5 * r.mess); r.chop = Math.max(r.chop || 0, 0.4 + 0.4 * r.mess); } }   // v17: barrel only offshore/calm; onshore & cross-shore → crumbly hero wave (no tube), messiness ∝ onshore wind
         if (/[?&]wx=(rain|storm)/.test(location.search)) r.chop = Math.min(1, (r.chop || 0.2) + 0.3);   // rain-pocked surface
         return r; };
       const backWater = turned && sp.behind && sp.behind.water && window.Photoreal;
@@ -547,7 +547,7 @@
       { const d = $("#pv-dir"), az = turned ? (ev.sunsetAz + 180) % 360 : ev.sunsetAz; if (d) d.textContent = (turned ? "↻ Behind you · facing " : "Facing ") + compass(az) + " " + Math.round(az) + "°"; }
       if (turned) { ph.forEach(im => im.style.opacity = 0); if (badge) badge.textContent = !turnedIll ? "180° view · realistic render from forecast" : o.bow ? `🌈 Rainbow ${ev.bonus.bow.p}% in view · 180° view · illustrated` : "180° view behind you · illustrated · not a photo"; }
       else showPhotos(t);
-      if (dragging && o.mode === "live") { clearTimeout(hqT); hqT = setTimeout(() => { dragging = false; queue(); }, 160); }
+      if (dragging && o.mode === "live" && !hqT) hqT = setTimeout(() => { hqT = 0; dragging = false; queue(); }, 160);   // v17 fix: surf re-renders no longer cancel the full-res pass (scene stuck low-res after a drag)
       wxT = t; wxC = window.Wx && (o.mode === "live" || window.AGX) ? Wx.conditions(ev, t, o.elev) : null;
       if (wxC) { if (o.mode !== "live") { wxC.rain = wxC.snow = wxC.fog = wxC.bolt = wxC.bow = 0; }   // canvas fallback draws its own weather
         const fw = turned ? (sp.behind && sp.behind.water) : sp.water, s0 = ev.s || {};
@@ -598,7 +598,7 @@
       PhotoStage.apiOK().then(ok => { if (!ok || state.spot !== sp.id) return; if (gen) { gen.hidden = false; gen.textContent = "Photo finish…"; }
         PhotoStage.ensurePhotos(sp, ev, t0, t1, ev.timing.peak, aspect, s2 => { if (state.spot === sp.id && document.body.contains(cv)) status(s2); }); });
     }
-    sl.addEventListener("input", () => { stop(); dragging = true; queue(); });
+    sl.addEventListener("input", () => { stop(); dragging = true; clearTimeout(hqT); hqT = 0; queue(); });
     document.querySelectorAll(".scrub .mk").forEach(b => b.addEventListener("click", () => { stop(); sl.value = b.dataset.t; queue(); }));
     const stop = () => { if (playing) { cancelAnimationFrame(playing); playing = 0; $("#pv-play").textContent = PLAY; } };
     $("#pv-play").onclick = () => {
@@ -700,7 +700,7 @@
       <div class="actions"><a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${vPos(sp).join(",")}">Directions ↗</a><button class="btn ghost" id="zoomto">Show on map</button></div>`;
     { const st = document.querySelector(".stage"), zs = $("#pv-zoom"), zo = $("#pv-zo");
       const setZ = z => { z = Math.max(1, Math.min(4, z)); state.zoom = z; zs.value = z; zo.textContent = z.toFixed(1) + "×"; window.__agQueue && __agQueue(); };
-      if (st && zs) { zs.oninput = () => setZ(+zs.value); { const R0 = state.results.find(x => x.spot.id === id), S0 = window.AGX && AGX.sea(R0.spot, { dir: (R0.ev.s || {}).wdir, mph: (R0.ev.s || {}).wind }); setZ(keepScroll ? (state.zoom || 1) : (S0 && S0.surf && S0.ft >= 1.5 ? (/[?&]hero=0/.test(location.search) ? 2.4 : heroWind(S0.wl) ? 1.3 : 1.7) : 1)); } zs.addEventListener("change", () => state.zoom = +zs.value);
+      if (st && zs) { zs.oninput = () => setZ(+zs.value); { const R0 = state.results.find(x => x.spot.id === id), S0 = window.AGX && AGX.sea(R0.spot, { dir: (R0.ev.s || {}).wdir, mph: (R0.ev.s || {}).wind }); setZ(keepScroll ? (state.zoom || 1) : (S0 && S0.surf && S0.ft >= 1.5 ? (/[?&]hero=0/.test(location.search) ? 2.4 : 1.3) : 1)); } zs.addEventListener("change", () => state.zoom = +zs.value);
         let d0 = 0, z0 = 1; const dist = e => Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
         st.addEventListener("touchstart", e => { if (e.touches.length === 2) { d0 = dist(e); z0 = +zs.value; } }, { passive: true });
         st.addEventListener("touchmove", e => { if (e.touches.length === 2 && d0) { e.preventDefault(); setZ(z0 * dist(e) / d0); state.zoom = +zs.value; } }, { passive: false });
