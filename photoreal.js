@@ -378,7 +378,7 @@ float heroSDF(vec3 p, float camM, out float mat, out vec4 info){
     float hS = uMess * H * (.13 * pat - .035) * band * smoothstep(.25, .55, uChop);   // inside soup needs wind/chop: small clean offshore days stay clean                 // height field: foam only where pat is high, open water between lines
     float dS = (y - .02 - hS) * .45;
     dF = min(dF, dC);
-    dSo = max(dS, .02 - y) * .7;
+    if (hS > .003) dSo = max(dS, .02 - y) * .7;   // no foam → no zero-thickness surface on the open water
   }
   float dP = 1e3;
   if (uPerson > .5){   // scale reference: 1.83 m (6 ft) surfer standing thigh-deep in front of the face, board under arm
