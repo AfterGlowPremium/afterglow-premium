@@ -1,5 +1,5 @@
 // Background music (DRAFT). Track: audio/track.m4a (Sean's song) with audio/track.mp3 as fallback — replace both files to change songs.
-// Starts on first tap anywhere (unless previously muted); 🎵 toggles mute. Fades in/out, loops, remembers the choice (localStorage "afterglow-music").
+// No autoplay: tap 🎵 to play, tap again to mute. Fades in/out, loops, remembers the choice (localStorage "afterglow-music").
 (function () {
   const KEY = "afterglow-music", VOL = 0.55, FADE = 1200;
   const SRC = new Audio().canPlayType('audio/mp4; codecs="mp4a.40.2"') ? "audio/track.m4a" : "audio/track.mp3";
@@ -17,15 +17,8 @@
   addEventListener("DOMContentLoaded", () => {
     const b = document.createElement("button"); b.id = "music-btn"; b.textContent = "🎵"; b.className = "off"; b.setAttribute("aria-label", "Background music");
     document.body.appendChild(b);
-    // starts on the first tap anywhere unless muted before; waits for the first tap anywhere (browsers block autoplay with sound)
-    // auto-start on load unless previously muted; if the browser blocks sound autoplay, start on the first interaction anywhere
-    if (localStorage.getItem(KEY) !== "off") {
-      au = new Audio(SRC); au.loop = true; au.volume = 0; au.preload = "auto";
-      b.className = "on"; on = true;
-      const evs = ["pointerdown", "touchstart", "keydown", "click", "scroll", "wheel"];
-      const go = e => { evs.forEach(n => removeEventListener(n, go, true)); if (on && e.target !== b) au.play().then(() => fade(VOL)).catch(() => {}); };
-      au.play().then(() => fade(VOL)).catch(() => evs.forEach(n => addEventListener(n, go, { capture: true, passive: true })));
-    }
+    // a remembered "on" still waits for the first tap anywhere (browsers block autoplay with sound)
+    if (localStorage.getItem(KEY) === "on") { const go = e => { removeEventListener("pointerdown", go, true); if (e.target !== b) set(true, b); }; addEventListener("pointerdown", go, true); }
     b.addEventListener("click", e => { e.stopPropagation(); set(!on, b); });
   });
 })();
