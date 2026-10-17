@@ -315,7 +315,7 @@ float surfH(vec2 p){
 
 // ---------- DRAFT: hero breaking wave as its own shape (2D cross-section swept along the wave line) ----------
 // peel front moves right-to-left; right of it = exploded whitewater, at it = barrel (lip thrown over a hollow), left = steep open shoulder
-float heroPX(){ return 9. - mod(uSurfT * 3.2, 34.); }
+float heroPX(){ return 6. - mod(uSurfT * 3.2, 15.); }   // crosses the view right→left in ~4 s
 float heroSDF(vec3 p, float camM, out float mat, out vec4 info){
   float H = uSurf * 1.05, D = uHeroD + .004 * p.x * p.x;
   float s = p.z + D, y = p.y + camM, rel = p.x - heroPX();
@@ -329,7 +329,7 @@ float heroSDF(vec3 p, float camM, out float mat, out vec4 info){
   float a = atan(q.y - c.y, q.x - c.x), aMin = mix(1.2, -.55, b);
   float dL = 1e3;
   if (b > .05){ dL = (a > aMin && a < 1.75) ? abs(length(q - c) - r) - th : min(length(q - c - r * vec2(cos(aMin), sin(aMin))), length(q - c - r * vec2(cos(1.75), sin(1.75)))) - th; }
-  float ff = smoothstep(-.5, 2.5, rel);
+  float ff = smoothstep(-.5, 2.5, rel) * (1. - .6 * smoothstep(5., 12., rel));
   float nz = ff > .02 ? fbm(vec2(p.x * .9 - uSurfT * 1.2, y * 1.4 + s * .6), 0., 3) : .5;
   float dF = length(vec2(s - .3 * H, y - .32 * H) * vec2(.8, 1.)) - .62 * H * (.7 + .6 * nz) * ff;
   dF = ff > .02 ? dF : 1e3;
@@ -595,7 +595,7 @@ void main(){
       float s = inf.x, y = inf.y, Hh = inf.z, b = inf.w, yr = clamp(y / max(Hh, .1), 0., 1.);
       vec3 rv = reflect(rd, n); rv.y = max(rv.y, .004); vec3 Tr; vec3 refl = skyRay(ro, normalize(rv), pixA * 2., false, Tr);
       float F = .02 + .98 * pow(1. - max(dot(-rd, n), .02), 5.), front = max(dot(n, uSunA), 0.);
-      vec3 olive = vec3(.11, .14, .08);
+      vec3 olive = vec3(.16, .2, .11);
       vec3 sky = hz2 * .8 + vec3(dot(hz2, vec3(.33))) * .4;
       vec3 c;
       float tex = fbm(vec2(p.x * 1.1 - uSurfT * .8, y * 2.5 + s), 0., 5);

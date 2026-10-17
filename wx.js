@@ -26,7 +26,9 @@
     // wind from the left or right of the view: cross-component sets which way rain leans; >40 mph → horizontal sheets
     const side = C.wdir != null && C.faceAz != null ? Math.sin(((C.wdir + 180) - C.faceAz) * Math.PI / 180) : -1;
     const slant = (side >= 0 ? 1 : -1) * (C.wind > 40 ? 6 : 0.1 + clamp(C.wind / 40) * 1.4);
+    if (C.shore) shoreline(x, W, H, hz, now);
     if (C.trees) snags(x, W, H, hz);
+    if (C.dune) dune(x, W, H, now);
     if (C.sea) sea(x, W, H, hz, C, now);
     if (C.torn) tornado(x, W, H, hz, now);
     if (C.fog) { const gr = x.createLinearGradient(0, hz - H * 0.3, 0, H); gr.addColorStop(0, "rgba(200,205,215,0)"); gr.addColorStop(0.5, `rgba(200,205,215,${0.45 * C.fog})`); gr.addColorStop(1, `rgba(190,195,205,${0.3 * C.fog})`); x.fillStyle = gr; x.fillRect(0, 0, W, H); }
@@ -99,6 +101,29 @@
         x.beginPath(); x.moveTo(sx, sy); x.quadraticCurveTo(sx + dir * L * 0.5, sy - L * 0.2, sx + dir * L, sy - L * 0.55); x.stroke(); }
       x.fillStyle = `rgba(230,230,228,${0.25 * s})`; x.fillRect(bx - 10 * s, by - 1, 20 * s, 2);   // foam around the base
     });
+    x.restore();
+  }
+  // Salt Ponds background: hazy flat far shore, low buildings, bare trees, cylindrical water tower, gulls (soft, haze-faded)
+  function shoreline(x, W, H, hz, now) {
+    x.save(); x.filter = "blur(1.2px)"; const y0 = hz - 1; x.fillStyle = "rgba(120,124,130,.45)";
+    x.fillRect(0, y0 - 3, W, 4);
+    for (let i = 0; i < 26; i++) { const bx = (i * 0.137 % 1) * W, bw = 6 + (i * 7 % 13), bh = 3 + (i * 5 % 7); x.fillRect(bx, y0 - 3 - bh, bw, bh); }
+    for (let i = 0; i < 9; i++) { const bx = (0.05 + i * 0.11) * W; x.strokeStyle = "rgba(110,112,116,.4)"; x.lineWidth = 1; x.beginPath(); x.moveTo(bx, y0 - 3); x.lineTo(bx, y0 - 14); x.moveTo(bx, y0 - 10); x.lineTo(bx - 4, y0 - 15); x.moveTo(bx, y0 - 11); x.lineTo(bx + 4, y0 - 16); x.stroke(); }
+    const tx = W * 0.68; x.fillStyle = "rgba(118,120,126,.55)"; x.fillRect(tx - 1, y0 - 22, 2, 19); x.beginPath(); x.ellipse(tx, y0 - 25, 6, 4, 0, 0, 6.283); x.fill();   // water tower
+    x.filter = "none"; x.strokeStyle = "rgba(60,62,66,.6)"; x.lineWidth = 1;
+    for (let i = 0; i < 3; i++) { const gx = ((i * 0.31 + now * 0.00002 * (1 + i * 0.3)) % 1) * W, gy = hz - H * (0.18 + i * 0.06) + Math.sin(now * 0.002 + i) * 3, s = 4 + i;
+      x.beginPath(); x.moveTo(gx - s, gy - s * 0.3); x.quadraticCurveTo(gx - s * 0.4, gy - s * 0.7, gx, gy); x.quadraticCurveTo(gx + s * 0.4, gy - s * 0.7, gx + s, gy - s * 0.3); x.stroke(); }   // gulls
+    x.restore();
+  }
+  // Jennette's dune: out-of-focus sea oats and grass in the foreground, swaying
+  function dune(x, W, H, now) {
+    x.save(); const base = H * 0.97;
+    x.filter = "blur(2.5px)"; x.fillStyle = "rgba(70,72,48,.75)"; x.beginPath(); x.moveTo(0, H); x.lineTo(0, base - H * 0.05); x.quadraticCurveTo(W * 0.5, base - H * 0.09, W, base - H * 0.04); x.lineTo(W, H); x.fill();
+    x.filter = "blur(1.2px)";
+    for (let i = 0; i < 70; i++) { const bx = (i * 0.0731 % 1) * W, hgt = H * (0.1 + (i * 0.37 % 1) * 0.16), sw = Math.sin(now * 0.0012 + i) * 4;
+      x.strokeStyle = `rgba(${150 + i % 40},${140 + i % 30},${95},.55)`; x.lineWidth = 1 + (i % 3) * 0.4;
+      x.beginPath(); x.moveTo(bx, base); x.quadraticCurveTo(bx + sw * 0.5, base - hgt * 0.6, bx + sw, base - hgt); x.stroke();
+      if (i % 4 === 0) { x.fillStyle = "rgba(170,150,100,.55)"; x.beginPath(); x.ellipse(bx + sw, base - hgt - 4, 1.6, 5, sw * 0.04, 0, 6.283); x.fill(); } }   // seed heads
     x.restore();
   }
   function tornado(x, W, H, hz, now) {   // NWS Tornado Warning only: soft translucent condensation funnel under a dark wall cloud, rain-wrapped
