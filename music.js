@@ -18,7 +18,14 @@
     const b = document.createElement("button"); b.id = "music-btn"; b.textContent = "🎵"; b.className = "off"; b.setAttribute("aria-label", "Background music");
     document.body.appendChild(b);
     // starts on the first tap anywhere unless muted before; waits for the first tap anywhere (browsers block autoplay with sound)
-    if (localStorage.getItem(KEY) !== "off") { const go = e => { removeEventListener("pointerdown", go, true); if (e.target !== b) set(true, b); }; addEventListener("pointerdown", go, true); }
+    // auto-start on load unless previously muted; if the browser blocks sound autoplay, start on the first interaction anywhere
+    if (localStorage.getItem(KEY) !== "off") {
+      au = new Audio(SRC); au.loop = true; au.volume = 0; au.preload = "auto";
+      b.className = "on"; on = true;
+      const evs = ["pointerdown", "touchstart", "keydown", "click", "scroll", "wheel"];
+      const go = e => { evs.forEach(n => removeEventListener(n, go, true)); if (on && e.target !== b) au.play().then(() => fade(VOL)).catch(() => {}); };
+      au.play().then(() => fade(VOL)).catch(() => evs.forEach(n => addEventListener(n, go, { capture: true, passive: true })));
+    }
     b.addEventListener("click", e => { e.stopPropagation(); set(!on, b); });
   });
 })();
