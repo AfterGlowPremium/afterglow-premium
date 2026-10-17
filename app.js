@@ -516,6 +516,7 @@
       // Draft: when the view behind you is open water, render it with the same photoreal sky+water shader (sun behind camera)
       const wOpt = () => { const m = window.AGX ? AGX.sea(sp, { dir: (ev.s || {}).wdir, mph: (ev.s || {}).wind }) : null; const zf = { fovMul: 1 / (state.zoom || 1) }; if (/[?&]sky=clear/.test(location.search)) Object.assign(zf, { high: 0.12, mid: 0, low: 0, block: 0, gap: 1, midKm: 4.5 }); if (/[?&]sky=overcast/.test(location.search)) Object.assign(zf, { high: 0.4, mid: 0.95, low: 0.85, block: 1, gap: 0 });
       { const wxq = new URLSearchParams(location.search).get("wx");
+        if (wxq === "haze") Object.assign(zf, { high: 0.25, mid: 0.15, low: 0.1, aod: 0.55, rh: 0.88, block: 0.3, gap: 0.6 });
         if (wxq === "partly") Object.assign(zf, { high: 0.35, mid: 0.3, low: 0.2, block: 0.15, gap: 0.8 });
         if (wxq === "fog") Object.assign(zf, { rh: 0.99, aod: 0.9, low: 0.5, block: 0.6 });
         if (wxq === "rain") Object.assign(zf, { high: 0.5, mid: 0.9, low: 0.95, block: 1, gap: 0, aod: 0.35, rh: 0.95 });

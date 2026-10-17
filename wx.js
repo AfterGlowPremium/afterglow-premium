@@ -111,19 +111,25 @@
     for (let i = 0; i < 9; i++) { const bx = (0.05 + i * 0.11) * W; x.strokeStyle = "rgba(110,112,116,.4)"; x.lineWidth = 1; x.beginPath(); x.moveTo(bx, y0 - 3); x.lineTo(bx, y0 - 14); x.moveTo(bx, y0 - 10); x.lineTo(bx - 4, y0 - 15); x.moveTo(bx, y0 - 11); x.lineTo(bx + 4, y0 - 16); x.stroke(); }
     const tx = W * 0.68; x.fillStyle = "rgba(118,120,126,.55)"; x.fillRect(tx - 1, y0 - 22, 2, 19); x.beginPath(); x.ellipse(tx, y0 - 25, 6, 4, 0, 0, 6.283); x.fill();   // water tower
     x.filter = "none"; x.strokeStyle = "rgba(60,62,66,.6)"; x.lineWidth = 1;
-    for (let i = 0; i < 3; i++) { const gx = ((i * 0.31 + now * 0.00002 * (1 + i * 0.3)) % 1) * W, gy = hz - H * (0.18 + i * 0.06) + Math.sin(now * 0.002 + i) * 3, s = 4 + i;
-      x.beginPath(); x.moveTo(gx - s, gy - s * 0.3); x.quadraticCurveTo(gx - s * 0.4, gy - s * 0.7, gx, gy); x.quadraticCurveTo(gx + s * 0.4, gy - s * 0.7, gx + s, gy - s * 0.3); x.stroke(); }   // gulls
+    for (let i = 0; i < 3; i++) { const gx = ((i * 0.31 + now * 0.00002 * (1 + i * 0.3)) % 1) * W, gy = hz - H * (0.16 + i * 0.07) + Math.sin(now * 0.002 + i) * 4, s = 9 + 3 * i, fl = Math.sin(now * 0.006 + i * 2) * 0.35;
+      x.lineWidth = 1.6; x.beginPath(); x.moveTo(gx - s, gy - s * (0.3 + fl)); x.quadraticCurveTo(gx - s * 0.4, gy - s * 0.65, gx, gy); x.quadraticCurveTo(gx + s * 0.4, gy - s * 0.65, gx + s, gy - s * (0.3 + fl)); x.stroke(); }   // gulls
     x.restore();
   }
   // Jennette's dune: out-of-focus sea oats and grass in the foreground, swaying
-  function dune(x, W, H, now) {
-    x.save(); const base = H * 0.97;
-    x.filter = "blur(2.5px)"; x.fillStyle = "rgba(70,72,48,.75)"; x.beginPath(); x.moveTo(0, H); x.lineTo(0, base - H * 0.05); x.quadraticCurveTo(W * 0.5, base - H * 0.09, W, base - H * 0.04); x.lineTo(W, H); x.fill();
-    x.filter = "blur(1.2px)";
-    for (let i = 0; i < 70; i++) { const bx = (i * 0.0731 % 1) * W, hgt = H * (0.1 + (i * 0.37 % 1) * 0.16), sw = Math.sin(now * 0.0012 + i) * 4;
-      x.strokeStyle = `rgba(${150 + i % 40},${140 + i % 30},${95},.55)`; x.lineWidth = 1 + (i % 3) * 0.4;
-      x.beginPath(); x.moveTo(bx, base); x.quadraticCurveTo(bx + sw * 0.5, base - hgt * 0.6, bx + sw, base - hgt); x.stroke();
-      if (i % 4 === 0) { x.fillStyle = "rgba(170,150,100,.55)"; x.beginPath(); x.ellipse(bx + sw, base - hgt - 4, 1.6, 5, sw * 0.04, 0, 6.283); x.fill(); } }   // seed heads
+  function dune(x, W, H, now) {   // Jennette's dune: out-of-focus foreground of sea oats (slender stalks, drooping seed panicles) and grass
+    x.save(); const base = H * 0.99;
+    x.filter = "blur(3px)"; x.fillStyle = "rgba(78,76,50,.8)"; x.beginPath(); x.moveTo(0, H); x.lineTo(0, base - H * 0.035); x.quadraticCurveTo(W * 0.5, base - H * 0.07, W, base - H * 0.03); x.lineTo(W, H); x.fill();
+    for (const [layer, n, blur, al] of [[0, 40, 1.4, 0.45], [1, 22, 2.6, 0.7]]) {
+      x.filter = `blur(${blur}px)`;
+      for (let i = 0; i < n; i++) { const r = (i * 0.618 + layer * 0.31) % 1, bx = r * W, hgt = H * (layer ? 0.2 + (i * 0.37 % 1) * 0.14 : 0.1 + (i * 0.41 % 1) * 0.09), sw = Math.sin(now * 0.0011 + i * 1.7) * (layer ? 6 : 3);
+        const tx = bx + sw, ty = base - hgt;
+        x.strokeStyle = `rgba(${168 + (i % 5) * 6},${156 + (i % 4) * 5},112,${al})`; x.lineWidth = layer ? 1.6 : 0.9;
+        x.beginPath(); x.moveTo(bx, base); x.quadraticCurveTo(bx + sw * 0.3, base - hgt * 0.55, tx, ty); x.stroke();
+        if (i % 2 === 0) { x.fillStyle = `rgba(190,168,118,${al})`;   // panicle: spikelets hanging off an arching tip
+          for (let k = 0; k < 7; k++) { const u = k / 6, px = tx + (u * 7 + sw * 0.2) * (i % 4 ? 1 : -1), py = ty + u * u * 10 + k * 1.2; x.beginPath(); x.ellipse(px, py, layer ? 1.6 : 1, layer ? 3.6 : 2.4, 0.5 * (i % 4 ? 1 : -1), 0, 6.283); x.fill(); } }
+        else if (i % 3 === 0) { x.strokeStyle = `rgba(120,128,80,${al})`; x.lineWidth = 0.8; x.beginPath(); x.moveTo(bx, base); x.quadraticCurveTo(bx - 6, base - hgt * 0.4, bx - 12 + sw, base - hgt * 0.55); x.stroke(); }   // leaf blade
+      }
+    }
     x.restore();
   }
   function tornado(x, W, H, hz, now) {   // NWS Tornado Warning only: soft translucent condensation funnel under a dark wall cloud, rain-wrapped
