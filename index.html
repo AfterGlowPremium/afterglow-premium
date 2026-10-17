@@ -7,21 +7,21 @@
 <meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 
-<title>Afterglow Real — Sunrise & Sunset</title>
+<title>Afterglow Premium — Sunrise & Sunset</title>
 <meta name="description" content="Forecasts great East Coast sunrises and sunsets, sun dogs and rainbows, with the best spots to watch.">
 <meta name="theme-color" content="#120c22">
 <meta name="copyright" content="© Sean Tuttle 2026">
 <meta property="og:type" content="website">
-<meta property="og:site_name" content="Afterglow Real">
-<meta property="og:title" content="Afterglow Real — free sunset tracker">
+<meta property="og:site_name" content="Afterglow Premium">
+<meta property="og:title" content="Afterglow Premium — free sunset tracker">
 <meta property="og:description" content="East Coast sunrise &amp; sunset forecasts with realistic skies, rainbow odds, lightning, sun dogs and Trifecta alerts.">
 <meta property="og:url" content="https://stoneridgeclothingco.github.io/afterglow-real/">
 <meta property="og:image" content="https://stoneridgeclothingco.github.io/afterglow-real/og-afterglow.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="Afterglow Real — free sunset tracker: sunset sky with rainbow and lightning beside the app on a phone">
+<meta property="og:image:alt" content="Afterglow Premium — free sunset tracker: sunset sky with rainbow and lightning beside the app on a phone">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Afterglow Real — free sunset tracker">
+<meta name="twitter:title" content="Afterglow Premium — free sunset tracker">
 <meta name="twitter:description" content="East Coast sunrise &amp; sunset forecasts with realistic skies, rainbow odds, lightning, sun dogs and Trifecta alerts.">
 <meta name="twitter:image" content="https://stoneridgeclothingco.github.io/afterglow-real/og-afterglow.png">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='62' r='26' fill='%23ff8a3d'/><rect y='62' width='100' height='38' fill='%23251a44'/></svg>">
@@ -43,11 +43,11 @@
   // No ?mode= → show the welcome homepage first (app.js stays idle until a choice is made)
   (function () { var m = new URLSearchParams(location.search).get("mode"); if (m !== "sunrise" && m !== "sunset") document.documentElement.classList.add("show-home"); })();
 </script>
-<section id="home" class="home" aria-label="Welcome to Afterglow Real">
+<section id="home" class="home" aria-label="Welcome to Afterglow Premium">
   <div class="home-sky"></div>
   <div class="home-card">
     <div class="logo home-logo"><span class="sun"></span></div>
-    <h1>Welcome to Afterglow Real</h1>
+    <h1>Welcome to Afterglow Premium</h1>
     <p class="home-sub">East Coast sky forecast · Maine to the Gulf · same spots, morning or evening</p>
     <p class="home-q">Choose your event</p>
     <div class="home-btns">
@@ -65,7 +65,7 @@
 <header class="top">
   <div class="brand">
     <div class="logo"><span class="sun"></span></div>
-    <div><h1>Afterglow Real</h1><p id="tagline">East Coast sunset forecast · Maine to the Gulf</p></div>
+    <div><h1>Afterglow Premium</h1><p id="tagline">East Coast sunset forecast · Maine to the Gulf</p></div>
   </div>
   <div class="top-ctl"><div class="mode-toggle" role="group" aria-label="Sunrise or sunset"><a id="tg-rise" href="?mode=sunrise">🌅 Sunrise</a><a id="tg-set" href="?mode=sunset">🌇 Sunset</a></div><button id="archive-btn" class="pill" title="Past predictions for days that have already happened">🗂 Archive</button><button id="nearme" class="pill">📍 Near me</button></div>
 </header>
@@ -140,7 +140,7 @@
   <div id="arch-body" class="arch-body"></div>
 </aside>
 
-<footer class="site-foot"><p class="site-copy">© Sean Tuttle 2026 · Afterglow Real</p></footer>
+<footer class="site-foot"><p class="site-copy">© Sean Tuttle 2026 · Afterglow Premium</p></footer>
 
 <div id="loading" class="loading"><div class="ld-sun"></div><p>Reading the sky…</p></div>
 
@@ -155,7 +155,7 @@
   (function () {
     var m = new URLSearchParams(location.search).get("mode"); if (m !== "sunrise" && m !== "sunset") return;
     var R = m === "sunrise";
-    document.title = R ? "Afterglow Real — Sunrise" : "Afterglow Real — Sunset";
+    document.title = R ? "Afterglow Premium — Sunrise" : "Afterglow Premium — Sunset";
     document.getElementById("tagline").textContent = R ? "East Coast sunrise forecast · Maine to the Gulf" : "East Coast sunset forecast · Maine to the Gulf";
     document.getElementById(R ? "tg-rise" : "tg-set").classList.add("on");
     document.getElementById(R ? "tg-rise" : "tg-set").setAttribute("aria-current", "true");
