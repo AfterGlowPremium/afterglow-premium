@@ -562,6 +562,7 @@
       const aq = anim ? { scale: AN.scale, dprCap: 1.5, fast: AN.scale < 0.62 ? 1 : 0 } : {};   // d14: animated frames: capped DPR + adaptive scale; stills stay full quality
       if (!o) o = turned ? Object.assign(Preview.state(sp, ev, t), Preview.drawBehind(back, sp, ev, t), { mode: "behind" }) : PhotoStage.draw(cv, sp, ev, t, Object.assign({ lq: dragging }, wOpt(), aq));
       if (anim) return;   // d14: animation frames only redraw the WebGL scene — no DOM/label/weather recompute
+      { const gy = ev.obs ? ev.obs.gray : 0; const fl = o.mode !== "live" && gy > 0 ? `saturate(${(1 - 0.9 * gy).toFixed(2)}) brightness(${(1 - 0.2 * gy).toFixed(2)})` : ""; if (cv.style.filter !== fl) cv.style.filter = fl; }   // d15: illustrated fallback goes gray too
       const turnedIll = turned && o.mode === "behind";
       if (o.mode === "live" && !/[?&]still=1/.test(location.search) && (window.PhotoStage && PhotoStage.last && PhotoStage.last.surf) && !dragging && !playing) startAnim();   // d14: keep the surf breaking at a steady 30 fps (was setTimeout 70 ms full re-render, ~12 fps, kept running behind the map)
       if (back) back.hidden = !turnedIll;
@@ -602,7 +603,7 @@
     const ph = [$("#pv-ph0"), $("#pv-ph1")], badge = $("#pv-badge"), modeBtn = $("#pv-mode"), gen = $("#pv-gen");
     const [t0, t1] = scrubRange(ev.timing);
     function showPhotos(t) {
-      const set = PhotoStage.photoSet(sp, ev), mix = photoOn ? PhotoStage.photoMix(set, t) : null;
+      const set = PhotoStage.photoSet(sp, ev), mix = photoOn && !(ev.obs && ev.obs.gray > 0.3) ? PhotoStage.photoMix(set, t) : null;   // d15: no colourful AI photo finish over an observed-gray sky
       ph.forEach((im, k) => { const m = mix && mix[k]; if (m) { if (im.getAttribute("src") !== m[0]) im.src = m[0]; im.style.opacity = m[1]; } else im.style.opacity = 0; });
       if (badge) badge.textContent = mix ? "AI photo finish · not a real photo" : PhotoStage.live() ? "Forecast render · not a photo" : "Illustrated forecast · not a photo";
     }
@@ -897,6 +898,10 @@
     // Draft: refresh forecast + renderings every 15 min (skipped while replaying the archive)
     setInterval(async () => { if (state.arch || document.hidden) return; try { const [d2, MW2] = await Promise.all([loadData(true), loadMarine()]); applyMarine(d2, MW2); applyNoaa(d2, state.noaa); state.data = d2; archSaveAll(); update(); if (window.AGX) AGX.refresh(SPOTS); if (state.spot && document.body.classList.contains("detail-open")) openDetail(state.spot, true); const u = $("#updated"); if (u) u.dataset.auto = "1"; } catch (e) { console.warn("auto-refresh", e); } }, 15 * 60 * 1000);
     if (window.AGX) AGX.refresh(SPOTS);
+    // d15: observed sky (METAR + GOES + latest model) for today's events → re-score + re-render when it lands, and every 10 min
+    const obsTick = () => { if (!window.AGObs || state.arch) return; const D = state.data, today = SPOTS.map((spot, k) => ({ spot, ev: evaluate(spot, D.S[k], [D.W[k * 3], D.W[k * 3 + 1], D.W[k * 3 + 2]], D.E[k], 0, D.AQ && D.AQ[k]) }));
+      return AGObs.refresh(SPOTS, today, 0).then(ch => { if (ch) update(); }).catch(e => console.warn("obs", e)); };
+    obsTick(); setInterval(() => { if (!document.hidden) obsTick(); }, 10 * 60 * 1000);
     // Afterglow Real deep link: ?mode=sunset&spot=clearwater&t=peak&play=1
     { const q = new URLSearchParams(location.search), id = q.get("spot");
       if (q.get("day") != null && state.data.S[0].daily.time[+q.get("day")] != null) { state.day = +q.get("day"); update(); }

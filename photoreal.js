@@ -43,7 +43,7 @@ uniform float uOff;     // DRAFT: offshore wind 0..1 (grooms faces, spray blown 
 uniform float uSurfT;   // DRAFT: wave clock (s)
 uniform float uSurfL;
 uniform vec3 uTint; uniform float uBack;   // DRAFT: dials from looks.js — water tint, backlight scale
-uniform float uFast; uniform float uHero; uniform float uHeroD; uniform float uMess;
+uniform float uFast; uniform float uGray; uniform float uHero; uniform float uHeroD; uniform float uMess;
    // v17: uMess 0 clean … 1 blown-out onshore crumbler
     // DRAFT: 1 = hero curling barrel wave (own shape) at uHeroD metres   // DRAFT: breaker spacing (m)   // wave motion phase (advances with the slider / Play)
 
@@ -723,6 +723,7 @@ void main(){
   if (uMeter > 1.5){ o = vec4(sqrt(clamp(col * uExpo / 4., 0., 1.)), 1.); return; }
   if (uMeter > .5){ float L = max(max(col.r, max(col.g, col.b)) * .8 + dot(col, vec3(.2126,.7152,.0722)) * .2, 1e-6); o = vec4(clamp((log2(L) + 16.) / 24., 0., 1.), 0., 0., 1.); return; }
   col *= uExpo;
+  if (uGray > 0.){ float lg = dot(col, vec3(.2126,.7152,.0722)); col = mix(col, vec3(lg) * vec3(.94, .97, 1.03) * (1. - .25 * uGray), uGray); }   // d15: observed overcast → flat gray, no glow
   { float lm = dot(col, vec3(.2126,.7152,.0722)); col = max(mix(vec3(lm), col, 1.3), 0.); }  // film-like colour separation
   // twilight colour response (calibrated against reference sunset photos): long-path warm light reads orange-red/pink
   // on camera rather than yellow, so pull green out of warm tones as the sun sinks
@@ -782,7 +783,7 @@ void main(){
     const W = P.w || canvas.clientWidth || 600, H = P.h || canvas.clientHeight || 340;
     const w = Math.max(64, Math.round(W * dpr * sc)), h = Math.max(48, Math.round(H * dpr * sc));
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
-    gl.viewport(0, 0, w, h); gl.useProgram(pr); if (U.uFast) gl.uniform1f(U.uFast, P.fast ? 1 : 0);
+    gl.viewport(0, 0, w, h); gl.useProgram(pr); if (U.uFast) gl.uniform1f(U.uFast, P.fast ? 1 : 0); if (U.uGray) gl.uniform1f(U.uGray, clamp(P.gray || 0));
     const d2r = Math.PI / 180, e = P.elev * d2r, ea = (P.elev + refr(P.elev)) * d2r, az = (P.sunAzOff || 0) * d2r;
     const dir = (el) => [Math.cos(el) * Math.sin(az), Math.sin(el), -Math.cos(el) * Math.cos(az)];
     gl.uniform2f(U.uRes, w, h);
@@ -799,10 +800,10 @@ void main(){
     gl.uniform1f(U.uFov, vfov * d2r); gl.uniform1f(U.uPitch, (vfov * (P.hero && P.surf ? 0.04 : 0.17)) * d2r * (P.fovMul || 1) / Math.max(0.2, P.fovMul || 1));
     gl.uniform2f(U.uSeed, P.seed * 977 % 500, P.seed * 613 % 500); gl.uniform1f(U.uWind, P.wind || 0);
     gl.uniform1f(U.uLQ, P.lq ? 1 : 0); gl.uniform1f(U.uDog, P.dog || 0); gl.uniform1f(U.uPixScale, 1);
-    gl.uniform1f(U.uTwi, Math.max(0, Math.min(1, (1.5 - P.elev) / 3)) * Math.max(0, Math.min(1, (P.elev + 8) / 3))); gl.uniform1f(U.uGrainT, P.grain || 0.37);
+    gl.uniform1f(U.uTwi, Math.max(0, Math.min(1, (1.5 - P.elev) / 3)) * Math.max(0, Math.min(1, (P.elev + 8) / 3)) * (1 - clamp(P.gray || 0))); gl.uniform1f(U.uGrainT, P.grain || 0.37);
     gl.uniform1f(U.uBlockGap, P.gap || 0);
     gl.uniform1f(U.uChop, P.chop != null ? P.chop : 0.3); gl.uniform1f(U.uSwell, P.swell || 0); gl.uniform1f(U.uCaps, P.caps || 0); gl.uniform1f(U.uPhase, P.phase || 0);
-    if (U.uSurf) { gl.uniform1f(U.uSurf, P.surf || 0); gl.uniform1f(U.uOff, P.off || 0); gl.uniform1f(U.uSurfT, P.surfT || 0); gl.uniform1f(U.uSurfL, P.surfL || 42); if (U.uTint) { const tn = P.tint || [0.15, 0.2, 0.12]; gl.uniform3f(U.uTint, tn[0], tn[1], tn[2]); gl.uniform1f(U.uBack, P.back != null ? P.back : 1); }
+    if (U.uSurf) { gl.uniform1f(U.uSurf, P.surf || 0); gl.uniform1f(U.uOff, P.off || 0); gl.uniform1f(U.uSurfT, P.surfT || 0); gl.uniform1f(U.uSurfL, P.surfL || 42); if (U.uTint) { const tn = P.tint || [0.15, 0.2, 0.12]; gl.uniform3f(U.uTint, tn[0], tn[1], tn[2]); gl.uniform1f(U.uBack, (P.back != null ? P.back : 1) * (1 - clamp(P.gray || 0))); }
     if (U.uHero) { gl.uniform1f(U.uHero, P.hero ? 1 : 0); if (U.uMess) gl.uniform1f(U.uMess, P.mess || 0); gl.uniform1f(U.uHeroD, P.heroD || 26); } }
     gl.uniform1f(U.uMidH, clamp(P.midKm || 4.5, 2.5, 7.5));
     gl.uniform1f(U.uMeter, 0);

@@ -86,5 +86,7 @@
     lines.push("Satellite is a snapshot of now; most useful within ~3–6 hours of sunset.");
     return lines;
   }
-  g.Sat = { tileUrl, readSpot, LAYERS };
+  // d15: one point → { vis: readVis, ir: readIR } fractions (tiles cached per 5 min)
+  async function samplePt(layer, lat, lng) { try { const px = await sample(layer, lat, lng, 6, 4); return layer === "ir" ? readIR(px) : readVis(px); } catch (e) { return null; } }
+  g.Sat = { tileUrl, readSpot, samplePt, LAYERS };
 })(window);

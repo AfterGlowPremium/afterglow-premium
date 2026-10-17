@@ -58,7 +58,7 @@
     return Object.assign({
       elev: pos.elev, sunAzOff: clamp(off + 3, -14, 14),
       high: C.high, mid: C.mid, low: C.low, midKm: C.midKm, gap: C.gap, cloudSrc: C.src,
-      block: clamp(ev.slotBlock || 0), aod: clamp(aod, 0.02, 1.2), rh: (ev.rhLow || 60) / 100,
+      block: clamp(ev.slotBlock || 0), gray: ev.obs ? ev.obs.gray : 0,   // d15: observed blocked sun → flat gray aod: clamp(aod, 0.02, 1.2), rh: (ev.rhLow || 60) / 100,
       water: spot.water !== false, pier: spot.type === "Pier" || spot.type === "Boardwalk",
       // horizon features from the geography table (spots.js SCENE) for the direction you face
       shore: spot.water !== false ? ({ open: 0, lowshore: 0.45, islands: 0.6, skyline: 0.35, bridge: 0.3, trees: 0.8, town: 0.6, hills: 0.4 }[spot.far] ?? (spot.obst >= 0.5 ? clamp(spot.obst / 2, 0.25, 1) : 0)) : 0,
