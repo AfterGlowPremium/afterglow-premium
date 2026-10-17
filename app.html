@@ -35,7 +35,9 @@
   .detail{height:calc(100dvh - 18px - max(env(safe-area-inset-top,0px), var(--ag-sat,0px)));max-height:calc(100dvh - 18px - max(env(safe-area-inset-top,0px), var(--ag-sat,0px)))}
   .stage-top{padding-top:calc(26px + max(env(safe-area-inset-top,0px), var(--ag-sat,0px)) * .25)}
   .leaflet-top{top:max(env(safe-area-inset-top,0px), var(--ag-sat,0px))}
-}</style>
+}
+@media (min-width:1024px) and (pointer:fine),(min-width:1024px) and (pointer:none){.top{padding-top:18px}}   /* v21: desktop — no phone safe-area padding */
+</style>
 </head>
 <body>
 <script>if (window.parent === window) location.replace("./" + location.search + location.hash);</script>
@@ -147,7 +149,8 @@
 <div id="loading" class="loading"><div class="ld-sun"></div><p>Reading the sky…</p></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="spots.js?v=lb1"></script>
+<script src="spots.js?v=lb2"></script>
+<script src="search.js?v=q2p"></script>
 <script src="model.js?v=d16"></script>
 <script src="preview.js?v=d16"></script>
 <script src="photoreal.js?v=d18"></script>
