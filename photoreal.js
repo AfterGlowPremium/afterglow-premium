@@ -557,10 +557,12 @@ void main(){
       float tex = fbm(q * vec2(.45, 1.6) + vec2(uSurfT * .3, 0.), 0., 5) * .65 + fbm(q * vec2(2.2, 3.2) + 7., 0., 4) * .35;
       float lip = smoothstep(.975, .995, x) * smoothstep(.45, .7, tex) * brk * mix(.9, .55, uOff);
       float broke = smoothstep(60., 30., d) * smoothstep(.55, .8, fbm(vec2(q.x * .05 + uSeed.x, 2.), 0., 3));
+      float onF = (1. - uOff) * clamp(uChop, 0., 1.) * smoothstep(.15, .5, uCaps);   // v16: onshore / cross-shore — sections close out and crumble
+      broke = max(broke, smoothstep(85., 25., d) * onF * smoothstep(.3, .65, fbm(vec2(q.x * .09 + uSeed.y, 5.), 0., 3)));
       float soup = broke * (smoothstep(.82, 1., x) * .9 + smoothstep(.35, .0, x) * .5) * smoothstep(.4, .75, tex);
-      float inside = smoothstep(28., 6., d) * smoothstep(.42, .72, fbm(q * vec2(.12, 1.1), 0., 5)) * .7;   // streaky foam lines left by broken waves
+      float inside = smoothstep(28. + 45. * onF, 6., d) * smoothstep(.42 - .12 * onF, .72, fbm(q * vec2(.12, 1.1) + vec2(0., uSurfT * .15 * onF), 0., 5)) * (.7 + .25 * onF);   // streaky foam lines left by broken waves
       float spill = (1. - uOff) * uChop * smoothstep(.9, 1., x) * brk * smoothstep(.3, .6, tex) * 1.2;
-      float caps = uCaps * smoothstep(.66, .78, fbm(q * vec2(.25, .55) + vec2(0., uSurfT * .4), 0., 5)) * (1. - faceZ);
+      float caps = uCaps * smoothstep(.66 - .1 * onF, .78, fbm(q * vec2(.25, .55) + vec2(0., uSurfT * .4), 0., 5)) * (1. - faceZ);
       float streak = uCaps * .35 * smoothstep(.6, .8, fbm(vec2(q.x * .04, q.y * .9) + 3., 0., 4));
       lip += spill + caps + streak;   // onshore: crumbling crests, whitecaps, wind streaks
       float foam = clamp(lip + soup + inside, 0., .95) * (1. - .5 * uOff * (1. - broke));

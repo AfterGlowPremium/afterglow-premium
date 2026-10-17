@@ -214,6 +214,7 @@
   const fmtTime = (t, tz) => new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZone: tz, timeZoneName: "short" }).format(new Date(t * 1000));
   const fmtDay = (t, tz, i) => state.arch ? new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: tz }).format(new Date(t * 1000)) : i === 0 ? (RISE ? "Today" : "Tonight") : i === 1 ? "Tomorrow" : new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: tz }).format(new Date(t * 1000));
   const fmtDate = (t, tz) => new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: tz }).format(new Date(t * 1000));
+  const heroWind = wl => !wl || wl.kt < 5 || /^(offshore|strong offshore|glassy)/.test(wl.look);   // v16: barrel only when offshore or calm
   const compass = d => ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"][Math.round(d / 22.5) % 16];
   const confidence = i => state.arch ? { t: "Past prediction · model replay", c: "md" } : i === 0 ? { t: "Higher confidence", c: "hi" } : i <= 2 ? { t: "Moderate confidence", c: "md" } : { t: "Low confidence (day " + (i + 1) + ")", c: "lo" };
   const dist = (a, b) => { const R = 3958.8, dLat = (b.lat - a.lat) * Math.PI / 180, dLng = (b.lng - a.lng) * Math.PI / 180; const x = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(x)); };
@@ -450,7 +451,7 @@
         ${chip("Low", Math.round(s.low) + "%", types.low || "", P.clouds)}
         ${chip(DIRW + " gap", Math.round((1 - ev.slotBlock) * 100) + "% open", ev.slotBlock < 0.25 ? "light gets in" : ev.slotBlock < 0.55 ? "partly blocked" : "mostly blocked", P.path)}
         ${chip("Air", hazeTxt, s.aod != null ? "AOD " + s.aod.toFixed(2) : "RH " + Math.round(ev.rhLow) + "%", P.aod)}
-        ${ev.sea ? `<div class="rc" id="pv-sea"><span>Water</span><b>—</b><small></small></div>` : `<div class="rc"><span>Water</span><b>None</b><small>land foreground</small></div>`}
+        ${ev.sea || (sp.behind && sp.behind.water) || (window.AGX && AGX.faceEast(sp.id)) ? `<div class="rc" id="pv-sea"><span>Water</span><b>—</b><small></small></div>` : `<div class="rc"><span>Water</span><b>None</b><small>land foreground</small></div>`}
       </div>
       <div class="fine pv-fine">This is an illustrated preview generated from this spot's forecast, not a photo. Cloud cover by layer comes from NOAA HRRR (with the low-cloud gap along the ${EV} line), haze from NOAA GOES-19 AOD / CAMS, and the lighting follows the actual sun position. Drag the slider or hit Play to watch the colors change through ${RISE ? "blue hour, first color, sunrise and golden hour" : "golden hour, sunset, afterglow and blue hour"}. Weather is drawn only when the forecast calls for it during the ${EV} window: rain (slanted by the wind), ⚡ storm cell and lightning (odds ≥ 25%), fog and snow. The water surface follows the forecast wind, gusts and wave height minute by minute: glassy and mirror-reflective under ~3 mph, light ripples to ~7 mph, small wavelets and a glitter path to ~11 mph, choppy with scattered whitecaps from ~12 mph, rough with frequent whitecaps past ~16 mph, and whitecaps everywhere past ~22 mph — with every shade in between. Rainbows form opposite the sun — behind you — so when rainbow odds are ≥ 10% a 🌈 “behind you” panel appears during the forecast rainbow window.</div>
       ${noaaPanel(r)}`;
@@ -523,7 +524,7 @@
         if (wxq === "rain") Object.assign(zf, { high: 0.5, mid: 0.9, low: 0.95, block: 1, gap: 0, aod: 0.35, rh: 0.95 });
         if (wxq === "storm") Object.assign(zf, { high: 0.7, mid: 0.9, low: 0.9, block: 0.85, gap: 0.25, aod: 0.3, rh: 0.92 }); } if (!m || !m.ft) return zf; const r = { ...zf, swell: Math.min(1, m.ft / 8), phase: (t % 86400) / Math.max(4, m.per * 40) };
         if (m.surf && m.ft >= 1.5) Object.assign(r, { hero: !/[?&]hero=0/.test(location.search), heroD: 9 + m.ft * 1.1, heroCam: 0.0007, surf: m.ft * 0.3048, off: m.off ? 1 : 0, surfT: window.__agSurfT != null ? window.__agSurfT : (t % 900) + performance.now() / 1000, surfL: Math.max(30, Math.min(70, (m.per || 10) * 4.2)) });
-        if (m.wl) { Object.assign(r, { chop: m.wl.chop, caps: m.wl.caps }); if (r.surf) r.off = m.wl.off; }
+        if (m.wl) { Object.assign(r, { chop: m.wl.chop, caps: m.wl.caps }); if (r.surf) r.off = m.wl.off; if (r.hero && !heroWind(m.wl)) r.hero = false; }
         // architecture: forecast → classes → look dials (looks.js); the renderer reads only the dials
         if (window.Looks) { const s0 = ev.s || {}, qp = new URLSearchParams(location.search), wxq = qp.get("wx"), skq = qp.get("sky");
           const cls = Looks.classify(sp, { low: s0.low != null ? s0.low / 100 : null, mid: s0.mid != null ? s0.mid / 100 : null, high: s0.high != null ? s0.high / 100 : null, precip: s0.precip, pp: s0.pprob, code: s0.code, cape: s0.cape, vis: s0.vis,
@@ -532,7 +533,8 @@
           if (skq === "clear") cls.sunGap = 1; if (cls.sky === "overcast" || cls.sky === "fog" || cls.sky === "rain") cls.sunGap = 0;
           const D = Looks.dials(cls, m); window.__agDials = D;
           Object.assign(r, { tint: D.waterTint, back: D.backlight, chop: D.roughness, caps: D.whitecaps });
-          if (r.surf) r.off = Math.max(D.off, D.spindrift * 0.9); if (!D.surf) { delete r.surf; delete r.hero; } }
+          if (r.surf) r.off = Math.max(D.off, D.spindrift * 0.9); if (!D.surf) { delete r.surf; delete r.hero; }
+          if (r.hero && !(D.wind === "offshore" || D.wind === "calm")) { r.hero = false; r.off = 0; r.heroCam = 0.0012; r.caps = Math.max(r.caps || 0, 0.25 + 0.5 * (r.chop || 0)); r.chop = Math.max(r.chop || 0, 0.6); } }   // v16: clean barrel only offshore/calm; onshore & cross-shore → crumbly broken surf
         if (/[?&]wx=(rain|storm)/.test(location.search)) r.chop = Math.min(1, (r.chop || 0.2) + 0.3);   // rain-pocked surface
         return r; };
       const backWater = turned && sp.behind && sp.behind.water && window.Photoreal;
@@ -557,7 +559,11 @@
         wl.querySelector("button").onclick = e => { e.stopPropagation(); state.wxOpen = !state.wxOpen; wl.dataset.o = ""; wl.dataset.tx = ""; render(); }; } } }
       if (!wxRaf) wxRaf = requestAnimationFrame(wxLoop);
       $("#pv-time").textContent = fmtTime(t, r.tz);
-      { const se = $("#pv-sea"), W2 = ev.sea && Model.seaAt(ev, t); if (se && W2) { se.querySelector("b").textContent = W2.name; se.querySelector("small").textContent = `${Math.round(W2.wind)} mph · gust ${Math.round(W2.gust)}${W2.ft != null ? ` · ${W2.ft < 1 ? "<1" : Math.round(W2.ft)} ft` : ""}`; se.title = W2.txt; } }
+      { const se = $("#pv-sea"), W2 = (ev.sea && Model.seaAt(ev, t)) || (se && { name: "Wind", wind: (ev.s || {}).wind || 0, gust: (ev.s || {}).gust || (ev.s || {}).wind || 0, ft: window.AGX && AGX.marine[sp.id] ? AGX.marine[sp.id].now : null, txt: "" }); if (se && W2) { const dm = window.AGX && AGX.sea(sp, {}), demo = dm && dm.mph != null, mph = demo ? dm.mph : W2.wind, wd = demo ? dm.wdir : (ev.s || {}).wdir, D = window.__agDials;
+          const rel = D && D.wind ? D.wind : null, relTx = { offshore: "offshore", onshore: "onshore", cross: "cross-shore", calm: "light" }[rel] || "", relC = { offshore: "off", onshore: "on", cross: "cross", calm: "calm" }[rel] || "";
+          const ft = demo ? dm.ft : W2.ft;
+          se.querySelector("b").textContent = demo && D && D.look ? D.look.charAt(0).toUpperCase() + D.look.slice(1).replace(/ — .*/, "") : W2.name;
+          se.querySelector("small").innerHTML = (wd != null ? `<span class="wdir"><i style="transform:rotate(${Math.round(wd + 180)}deg)" title="arrow = where the wind blows">↑</i>${Math.round(mph)} mph from ${compass(wd)}</span>${relTx ? `<em class="wrel ${relC}">${relTx}</em> · ` : ""}` : `${Math.round(mph)} mph · `) + [demo ? "" : `gust ${Math.round(W2.gust)}`, ft != null ? `${ft < 1 ? "<1" : Math.round(ft)} ft` : ""].filter(Boolean).join(" · "); se.title = W2.txt; } }
       $("#pv-phase").textContent = phaseName(o.phase);
       $("#pv-elev").textContent = `sun ${o.elev >= 0 ? "+" : "−"}${Math.abs(o.elev).toFixed(1)}°`;
       const parts = [["high", ev.s.high, "Cirrus"], ["mid", ev.s.mid, "Mid cloud"], ["low", ev.s.low, "Low cloud"]].filter(x => x[1] >= 10).map(x => `${x[2]} ${word(o.lit[x[0]])}`);
@@ -694,7 +700,7 @@
       <div class="actions"><a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${vPos(sp).join(",")}">Directions ↗</a><button class="btn ghost" id="zoomto">Show on map</button></div>`;
     { const st = document.querySelector(".stage"), zs = $("#pv-zoom"), zo = $("#pv-zo");
       const setZ = z => { z = Math.max(1, Math.min(4, z)); state.zoom = z; zs.value = z; zo.textContent = z.toFixed(1) + "×"; window.__agQueue && __agQueue(); };
-      if (st && zs) { zs.oninput = () => setZ(+zs.value); { const S0 = window.AGX && AGX.sea(state.results.find(x => x.spot.id === id).spot, {}); setZ(keepScroll ? (state.zoom || 1) : (S0 && S0.surf && S0.ft >= 1.5 ? (!/[?&]hero=0/.test(location.search) ? 1.3 : 2.4) : 1)); } zs.addEventListener("change", () => state.zoom = +zs.value);
+      if (st && zs) { zs.oninput = () => setZ(+zs.value); { const R0 = state.results.find(x => x.spot.id === id), S0 = window.AGX && AGX.sea(R0.spot, { dir: (R0.ev.s || {}).wdir, mph: (R0.ev.s || {}).wind }); setZ(keepScroll ? (state.zoom || 1) : (S0 && S0.surf && S0.ft >= 1.5 ? (/[?&]hero=0/.test(location.search) ? 2.4 : heroWind(S0.wl) ? 1.3 : 1.7) : 1)); } zs.addEventListener("change", () => state.zoom = +zs.value);
         let d0 = 0, z0 = 1; const dist = e => Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
         st.addEventListener("touchstart", e => { if (e.touches.length === 2) { d0 = dist(e); z0 = +zs.value; } }, { passive: true });
         st.addEventListener("touchmove", e => { if (e.touches.length === 2 && d0) { e.preventDefault(); setZ(z0 * dist(e) / d0); state.zoom = +zs.value; } }, { passive: false });
