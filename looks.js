@@ -30,7 +30,7 @@
   function profile(sp) {
     const P = (g.SPOT_PROFILE || {})[sp.id] || {};
     const faceEast = g.AGX && g.AGX.faceEast ? g.AGX.faceEast(sp.id) : false;
-    const normal = P.normal != null ? P.normal : faceEast ? 90 : sp.arc ? (sp.arc[0] + sp.arc[1]) / 2 : 270;
+    const normal = P.normal != null ? P.normal : g.AGX && g.AGX.normal ? g.AGX.normal(sp) : faceEast ? 90 : sp.arc ? (sp.arc[0] + sp.arc[1]) / 2 : 270;   // d13: same shore angle as agx.js
     const water = P.water || (sp.state === "TX" || ["pensacola"].includes(sp.id) ? "gulf" : /Harbor|Waterfront/.test(sp.type) ? "harbor" : sp.state === "VA" && sp.lng < -76.1 ? "bay" : "ocean");
     return Object.assign({ normal, views: P.views || [normal, (normal + 180) % 360], water, surf: P.surf != null ? P.surf : faceEast || sp.type === "Beach" || sp.type === "Pier", landmarks: P.landmarks || [] }, { W: WATER[water] });
   }

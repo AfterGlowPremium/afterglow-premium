@@ -52,8 +52,11 @@
     if (i < 0) i = 0; if (i >= T.length - 1) return v[T.length - 1];
     const f = (t - T[i]) / 3600, a = v[i], b = v[i + 1];
     if (a == null) return b; if (b == null) return a;
+    if (CIRC[key]) { const d = ((b - a + 540) % 360) - 180; return (a + d * f + 360) % 360; }   // d13: directions wrap — 350° → 10° passes through N, not S
     return a + (b - a) * f;
   }
+  const CIRC = { wind_direction_10m: 1, wave_direction: 1, swell_wave_direction: 1 };
+  const lerpDeg = (a, b, f) => a == null ? b : b == null ? a : (a + (((b - a + 540) % 360) - 180) * f + 360) % 360;
   const atCode = (h, t) => { const T = h.time; const i = clamp(Math.round((t - T[0]) / 3600), 0, T.length - 1); return h.weather_code ? h.weather_code[i] : null; };
   const sumRange = (h, key, t0, t1) => { let s = 0; for (let i = 0; i < h.time.length; i++) if (h.time[i] >= t0 && h.time[i] <= t1) s += h[key][i] || 0; return s; };
   const isShowery = c => (c >= 80 && c <= 82) || c >= 95;
@@ -313,6 +316,7 @@
     wx.wind = { mph: Math.round(windMx), gust: Math.round(gustMx), dir: s.wdir };
     wx.rain = { mm: +rainMm.toFixed(1), pp: Math.round(rainPp * 100) };
     // ---- WATER SURFACE through the event window (wind / gusts every 15 min + wave height toward the sun when the marine model has it) ----
+    const windSer = wxSer.map(x => ({ t: x.t, wind: x.wind, gust: x.gust, wdir: x.wdir }));   // d13: wind at any slider time, every spot (not just water:true ones)
     const sea = sp.water ? { ser: wxSer.map(x => ({ t: x.t, wind: x.wind, gust: x.gust, wave: x.wave })), expo: SEA_EXPO[sp.type] != null ? SEA_EXPO[sp.type] : 0.5 } : null;
     // ---- TRIFECTA: epic color + epic rainbow + epic lightning lined up in the same window ----
     const EP = EPIC;
@@ -356,7 +360,7 @@
 
     return { tSet, score, sky, site, s, path, priorRain, reasons: R, gates, comp, badges, bonus, wx, tri, dog: { p: pct(dog.p), t: dog.t }, bow: { p: pct(bow.p), t: bow.t },
       sea, clouds: cloudTypes(s), sunsetAz: az, canvasCover, slotBlock, clean, rhLow, dewDep, dP6, dP24, dDew, fropaH, front, timing,
-      siteInfo: { inArc, off, alignQ, obst: sp.obst, water: sp.water, surface, arc: sp.arc }, season, screen };
+      windSer, siteInfo: { inArc, off, alignQ, obst: sp.obst, water: sp.water, surface, arc: sp.arc }, season, screen };
   }
 
 
@@ -396,9 +400,17 @@
     if (score >= 30) return { t: "Fair", c: "#c9a46a" };
     return { t: "Poor", c: "#6f7590" };
   }
+  // d13: speed, gust AND direction for the same instant (direction interpolated on the circle)
+  function windAt(ev, t) {
+    const a = ev && ev.windSer; if (!a || !a.length) return ev && ev.s ? { wind: ev.s.wind, gust: ev.s.gust, wdir: ev.s.wdir } : null;
+    let i = 0; while (i < a.length - 2 && a[i + 1].t <= t) i++;
+    const p = a[i], q = a[Math.min(i + 1, a.length - 1)], f = q.t > p.t ? clamp((t - p.t) / (q.t - p.t)) : 0;
+    const L = k => p[k] == null ? q[k] : q[k] == null ? p[k] : p[k] + (q[k] - p[k]) * f;
+    return { wind: L("wind"), gust: L("gust"), wdir: lerpDeg(p.wdir, q.wdir, f) };
+  }
   // "Epic" thresholds for the Trifecta (all three must line up at the same spot & window)
   const EPIC = { color: 85, bow: 40, bolt: 40 };
   const likely = p => p >= 40 ? "High" : p >= 22 ? "Moderate" : p >= 10 ? "Low" : "Unlikely";
 
-  g.Model = { sunPos, offset, evaluate, label, likely, clamp, timeAtElev, EPIC, seaState, seaAt };
+  g.Model = { sunPos, offset, evaluate, label, likely, clamp, timeAtElev, EPIC, seaState, seaAt, windAt, at };
 })(window);

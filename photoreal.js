@@ -43,7 +43,7 @@ uniform float uOff;     // DRAFT: offshore wind 0..1 (grooms faces, spray blown 
 uniform float uSurfT;   // DRAFT: wave clock (s)
 uniform float uSurfL;
 uniform vec3 uTint; uniform float uBack;   // DRAFT: dials from looks.js — water tint, backlight scale
-uniform float uHero; uniform float uHeroD; uniform float uMess; uniform float uPerson;   // v17: uPerson 1 = ~6 ft surfer standing in the trough for scale
+uniform float uHero; uniform float uHeroD; uniform float uMess;
    // v17: uMess 0 clean … 1 blown-out onshore crumbler
     // DRAFT: 1 = hero curling barrel wave (own shape) at uHeroD metres   // DRAFT: breaker spacing (m)   // wave motion phase (advances with the slider / Play)
 
@@ -335,7 +335,7 @@ float heroSDF(vec3 p, float camM, out float mat, out vec4 info){
   { float cz = p.z + uHeroD; p = vec3(p.x * .927 + cz * .375, p.y, -p.x * .375 + cz * .927 - uHeroD); }   // ~22° down-the-line view
   // 2D profile swept along the crest. Phase from distance to the peel point (rel<0 = unbroken, peel moves right→left):
   // round swell → steep concave wall → lip pitches past vertical → tube → impact/foam → soup
-  float H = uSurf * 1.4, D = uHeroD + .003 * p.x * p.x;   // v17: face height calibrated to forecast (2 ft ≈ waist, 4 ft ≈ head high, 6 ft ≈ overhead on a 6 ft person)
+  float H = uSurf * 1.4, D = uHeroD + .003 * p.x * p.x;   // v17: face height calibrated to forecast (1.4 × forecast face height: 2 ft ≈ waist, 4 ft ≈ head high, 6 ft ≈ overhead; no figure drawn)
   float s = p.z + D, y = p.y + camM, rel = (mod(p.x * .927 + (p.z + uHeroD) * .375 - heroPX() + 9., 15.) - 9.) * 1.7;   // phases compressed so the whole sequence fits the view
   float offOK = smoothstep(.15, .45, uOff + .25) * (1. - smoothstep(.05, .35, uMess));   // v17: onshore → no lip throw / no tube
   float steep = smoothstep(-13., -4., rel) * (1. - smoothstep(2., 9., rel));                       // 0 round … 1 vertical wall
@@ -391,20 +391,7 @@ float heroSDF(vec3 p, float camM, out float mat, out vec4 info){
     dF = min(dF, dC);
     // (geometry soup disabled — painted on the water by soupAmt instead)   // no foam → no zero-thickness surface on the open water
   }
-  float dP = 1e3;
-  if (uPerson > .5){   // scale reference: 1.83 m (6 ft) surfer standing thigh-deep in front of the face, board under arm
-    vec3 r = vec3(p.x + 1.4, y + .5, s - 3.);                     // in the trough just in front of the face, feet .5 m under the surface
-    float sw = sin(uSurfT * .9) * .03;
-    float legs = min(length(r - vec3(-.08, clamp(r.y, 0., .9), 0.)) - .07, length(r - vec3(.08, clamp(r.y, 0., .9), 0.)) - .07);
-    vec3 tq = r - vec3(0., clamp(r.y, .92, 1.5), 0.); float torso = length(tq * vec3(.85, 1., 1.4)) - .14;
-    float head = length(r - vec3(sw, 1.71, 0.)) - .105;
-    vec3 a1 = r - vec3(-.23, 1.48, 0.), a2 = r - vec3(.23, 1.48, 0.);
-    float armL = length(a1 - vec3(-.06, -.55, 0.) * clamp(dot(a1, vec3(-.06, -.55, 0.)) / .306, 0., 1.)) - .05;
-    float armR = length(a2 - vec3(.08, -.5, .05) * clamp(dot(a2, vec3(.08, -.5, .05)) / .259, 0., 1.)) - .05;
-    dP = min(min(legs, torso), min(head, min(armL, armR)));
-    dP = max(dP, .02 - y);                                          // only above the water
-  }
-  float d = min(min(min(dB, dL), dSo), dP); mat = dP <= min(min(dB, dL), dSo) ? 3. : dSo < min(dB, dL) ? 2. : dL < dB ? 1. : 0.;
+  float d = min(min(dB, dL), dSo); mat = dSo < min(dB, dL) ? 2. : dL < dB ? 1. : 0.;   // d13: 6 ft scale figure removed; face height stays calibrated (uSurf * 1.4)
   gFoamD = dF;
   info = vec4(s, y, Hh, pitch * (1. - broke)); return d;
 }
@@ -713,9 +700,6 @@ void main(){
         float lace = smoothstep(.42, .66, b1 * .55 + b2 * .4 + strk * .25);
         vec3 wet = sky * olive * .55 + refl * F;
         c = mix(wet, fc * (1.2 + .45 * b2) * (.7 + .4 * clamp(n.y, 0., 1.)) + vec3(.008), lace);
-      } else if (mat > 2.5) {   // surfer: black wetsuit, wet sheen, sky rim light, warm sun on the front at golden hour
-        float rim = pow(1. - abs(dot(n, -rd)), 3.);
-        c = sky * .02 + refl * F * .18 + rim * sky * .12 + sL * front * vec3(1., .8, .6) * .05;
       } else {
         c = fc * 1.45 * (.7 + .55 * fbm(vec2(p.x * 2.2, y * 2.4 - uSurfT * 1.5), 0., 5));             // exploded turbulent whitewater
       }
@@ -819,7 +803,7 @@ void main(){
     gl.uniform1f(U.uBlockGap, P.gap || 0);
     gl.uniform1f(U.uChop, P.chop != null ? P.chop : 0.3); gl.uniform1f(U.uSwell, P.swell || 0); gl.uniform1f(U.uCaps, P.caps || 0); gl.uniform1f(U.uPhase, P.phase || 0);
     if (U.uSurf) { gl.uniform1f(U.uSurf, P.surf || 0); gl.uniform1f(U.uOff, P.off || 0); gl.uniform1f(U.uSurfT, P.surfT || 0); gl.uniform1f(U.uSurfL, P.surfL || 42); if (U.uTint) { const tn = P.tint || [0.15, 0.2, 0.12]; gl.uniform3f(U.uTint, tn[0], tn[1], tn[2]); gl.uniform1f(U.uBack, P.back != null ? P.back : 1); }
-    if (U.uHero) { gl.uniform1f(U.uHero, P.hero ? 1 : 0); if (U.uMess) gl.uniform1f(U.uMess, P.mess || 0); if (U.uPerson) gl.uniform1f(U.uPerson, P.person ? 1 : 0); gl.uniform1f(U.uHeroD, P.heroD || 26); } }
+    if (U.uHero) { gl.uniform1f(U.uHero, P.hero ? 1 : 0); if (U.uMess) gl.uniform1f(U.uMess, P.mess || 0); gl.uniform1f(U.uHeroD, P.heroD || 26); } }
     gl.uniform1f(U.uMidH, clamp(P.midKm || 4.5, 2.5, 7.5));
     gl.uniform1f(U.uMeter, 0);
     const ovc = clamp((Math.max(P.mid, P.low, P.high * 0.6) - 0.5) / 0.45);

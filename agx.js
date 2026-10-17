@@ -3,6 +3,11 @@
 (function (g) {
   const FACE_EAST = new Set(["hatteraslh","saltponds","windmillpt","grandview","plumtree","capehenry","avalonpier","jennettes","frisco","buxton","avon",
     "ditchplains","rockaway","manasquan","narragansett","hamptonnh","ocmd","vb1st","sandbridge","sturns","rodanthe","wrightsville","folly","tybee","jaxpier","newsmyrna","sebastian","cocoa"]);
+  // d13: shore-facing angle (direction the beach faces, toward open water, degrees true) — drives offshore/onshore/cross-shore.
+  // Wind FROM normal±60° = onshore, FROM normal+180±60° = offshore, otherwise cross-shore. Measured from the OSM coastline / charts.
+  const SHORE_NORMAL = { saltponds: 100, windmillpt: 95, jennettes: 75, rodanthe: 100, sturns: 85, vb1st: 85, sandbridge: 80,
+    frisco: 165, pensacola: 170, galveston: 140 };
+  const normal = sp => SHORE_NORMAL[sp.id] != null ? SHORE_NORMAL[sp.id] : FACE_EAST.has(sp.id) ? 90 : (sp.arc ? (sp.arc[0] + sp.arc[1]) / 2 : 270);
   const M = {}, AL = {};
   const SEV = /Tornado|Severe Thunderstorm|Hurricane|Tropical Storm|Storm Surge|Flash Flood|Extreme Wind|Hurricane Force Wind/;
   async function marine(spots) {
@@ -23,12 +28,12 @@
         const f = (await r.json()).features.map(x => x.properties).filter(p => SEV.test(p.event));
         AL[s.id] = f.length ? { events: [...new Set(f.map(p => p.event))], tornado: f.some(p => /Tornado Warning/.test(p.event)) } : null; } catch (e) {} }));
   }
-  const offshore = (sp, wdir) => { const face = FACE_EAST.has(sp.id) ? 90 : (sp.arc ? (sp.arc[0] + sp.arc[1]) / 2 : 270); const d = Math.abs(((wdir - face + 540) % 360) - 180); return d > 120; };
+  const offshore = (sp, wdir) => { const face = normal(sp); const d = Math.abs(((wdir - face + 540) % 360) - 180); return d > 120; };
   // Wind → wave look (rules from Surfline's Live Wind guide + surf-forecast primers): impact = speed × onshore/offshore component.
   // < 5 kt ≈ glassy/clean · 5–10 kt textured · onshore > 10 kt blown out (crumbly, whitewater, chop) · cross-shore = ruffled/chop
   // offshore holds faces open (steeper, clean, groomed); strong offshore (> ~15 kt) = heavy spray off the lips, hard to paddle.
   function windLook(sp, wd, mph) {
-    const face = FACE_EAST.has(sp.id) ? 90 : (sp.arc ? (sp.arc[0] + sp.arc[1]) / 2 : 270), kt = (mph || 0) / 1.15;
+    const face = normal(sp), kt = (mph || 0) / 1.15;
     const on = Math.cos((wd - face) * Math.PI / 180), cross = Math.abs(Math.sin((wd - face) * Math.PI / 180));   // on > 0: wind from the sea
     const tex = Math.max(0, Math.min(1, (kt - 5) / 5));
     const chop = Math.min(1, tex * (Math.max(0, on) * 1.2 + cross * 0.8) + Math.max(0, -on) * 0.06 * Math.min(1, kt / 15));
@@ -38,12 +43,12 @@
   }
   const X = g.AGX = {
     marine: M, alerts: AL,
-    startTurned: (id, rise) => !rise && FACE_EAST.has(id), faceEast: id => FACE_EAST.has(id),
+    normal, startTurned: (id, rise) => !rise && FACE_EAST.has(id), faceEast: id => FACE_EAST.has(id),
     badges: sp => { let h = ""; const m = M[sp.id], a = AL[sp.id]; if (m && m.max >= 3) h += `<em class="pb wave" title="Waves to ${m.max.toFixed(1)} ft">🌊</em>`; if (a) h += `<em class="pb sev" title="${a.events.join(", ")}"></em>`; return h; },
     tip: sp => { const m = M[sp.id], a = AL[sp.id]; return (m && m.max != null ? `<br>🌊 Waves ${m.now != null ? m.now.toFixed(1) : "?"} ft now · up to ${m.max.toFixed(1)} ft / 48 h${m.per ? ` · ${Math.round(m.per)} s` : ""}` : "") + (a ? `<br><b style="color:#ff5a4a">▲ ${a.events.join(", ")}</b>` : ""); },
     sea: (sp, wind) => { const dq = new URLSearchParams(location.search).get("demo") || ""; const qp = new URLSearchParams(location.search);
       if (/surf/.test(dq)) { const ft = +qp.get("wave") || 5, mph = qp.get("wind") != null ? +qp.get("wind") : null, wd = qp.get("dir") != null ? +qp.get("dir") : null;
-        const wl = wd != null ? windLook(sp, wd, mph || 0) : null; return { ft, per: +qp.get("period") || 11, dir: 80, combo: /combo/.test(dq), off: wl ? wl.off > 0.2 : !/onshore/.test(dq), wl, surf: true, mph, wdir: wd }; } const m = M[sp.id] || {}; const wd = wind && wind.dir != null ? wind.dir : null;
+        const wl = wd != null ? windLook(sp, wd, mph || 0) : null; return { demo: true, ft, per: +qp.get("period") || 11, dir: 80, combo: /combo/.test(dq), off: wl ? wl.off > 0.2 : !/onshore/.test(dq), wl, surf: true, mph, wdir: wd }; } const m = M[sp.id] || {}; const wd = wind && wind.dir != null ? wind.dir : null;
       return { ft: m.now || 0, per: m.per || 8, dir: m.dir, combo: !!(m.s2 && m.s2 > 1 && m.d2 != null && m.dir != null && Math.abs(((m.d2 - m.dir + 540) % 360) - 180) > 25), off: wd != null && offshore(sp, wd), wl: wd != null ? windLook(sp, wd, wind.mph || 0) : null, surf: FACE_EAST.has(sp.id) || sp.type === "Beach" || sp.type === "Pier" }; },
     async refresh(spots) { g.__agSpots = spots; await Promise.all([marine(spots), alerts(spots)]); g.__agRender && g.__agRender(); },
   };
