@@ -521,8 +521,17 @@
         if (wxq === "fog") Object.assign(zf, { rh: 0.99, aod: 0.9, low: 0.5, block: 0.6 });
         if (wxq === "rain") Object.assign(zf, { high: 0.5, mid: 0.9, low: 0.95, block: 1, gap: 0, aod: 0.35, rh: 0.95 });
         if (wxq === "storm") Object.assign(zf, { high: 0.7, mid: 0.9, low: 0.9, block: 0.85, gap: 0.25, aod: 0.3, rh: 0.92 }); } if (!m || !m.ft) return zf; const r = { ...zf, swell: Math.min(1, m.ft / 8), phase: (t % 86400) / Math.max(4, m.per * 40) };
-        if (m.surf && m.ft >= 1.5) Object.assign(r, { hero: /[?&]hero=1/.test(location.search), heroD: 14 + m.ft * 1.5, heroCam: 0.0012, surf: m.ft * 0.3048, off: m.off ? 1 : 0, surfT: (t % 900) + performance.now() / 1000, surfL: Math.max(30, Math.min(70, (m.per || 10) * 4.2)) });
+        if (m.surf && m.ft >= 1.5) Object.assign(r, { hero: /[?&]hero=1/.test(location.search), heroD: 14 + m.ft * 1.5, heroCam: 0.0012, surf: m.ft * 0.3048, off: m.off ? 1 : 0, surfT: window.__agSurfT != null ? window.__agSurfT : (t % 900) + performance.now() / 1000, surfL: Math.max(30, Math.min(70, (m.per || 10) * 4.2)) });
         if (m.wl) { Object.assign(r, { chop: m.wl.chop, caps: m.wl.caps }); if (r.surf) r.off = m.wl.off; }
+        // architecture: forecast → classes → look dials (looks.js); the renderer reads only the dials
+        if (window.Looks) { const s0 = ev.s || {}, qp = new URLSearchParams(location.search), wxq = qp.get("wx"), skq = qp.get("sky");
+          const cls = Looks.classify(sp, { low: s0.low != null ? s0.low / 100 : null, mid: s0.mid != null ? s0.mid / 100 : null, high: s0.high != null ? s0.high / 100 : null, precip: s0.precip, pp: s0.pprob, code: s0.code, cape: s0.cape, vis: s0.vis,
+            windMph: m.mph != null ? m.mph : s0.wind, windDir: m.wdir != null ? m.wdir : s0.wdir, alerts: (window.AGX && AGX.alerts[sp.id] || {}).events || [] });
+          if (wxq && Looks.LOOKS.sky[wxq]) cls.sky = wxq; if (skq === "clear" || skq === "overcast") cls.sky = skq; if (wxq === "haze") cls.sky = "partly";
+          if (skq === "clear") cls.sunGap = 1; if (cls.sky === "overcast" || cls.sky === "fog" || cls.sky === "rain") cls.sunGap = 0;
+          const D = Looks.dials(cls, m); window.__agDials = D;
+          Object.assign(r, { tint: D.waterTint, back: D.backlight, chop: D.roughness, caps: D.whitecaps });
+          if (r.surf) r.off = Math.max(D.off, D.spindrift * 0.9); if (!D.surf) { delete r.surf; delete r.hero; } }
         if (/[?&]wx=(rain|storm)/.test(location.search)) r.chop = Math.min(1, (r.chop || 0.2) + 0.3);   // rain-pocked surface
         return r; };
       const backWater = turned && sp.behind && sp.behind.water && window.Photoreal;

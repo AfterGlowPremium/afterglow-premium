@@ -42,6 +42,7 @@ uniform float uSurf;    // DRAFT: breaking-wave face height (m) for surf spots, 
 uniform float uOff;     // DRAFT: offshore wind 0..1 (grooms faces, spray blown back off the lips)
 uniform float uSurfT;   // DRAFT: wave clock (s)
 uniform float uSurfL;
+uniform vec3 uTint; uniform float uBack;   // DRAFT: dials from looks.js — water tint, backlight scale
 uniform float uHero; uniform float uHeroD;    // DRAFT: 1 = hero curling barrel wave (own shape) at uHeroD metres   // DRAFT: breaker spacing (m)   // wave motion phase (advances with the slider / Play)
 
 const float PI = 3.14159265;
@@ -524,8 +525,8 @@ void main(){
       float cosI = max(dot(-rd, n), .02), F = .02 + .98 * pow(1. - cosI, 5.);
       float x = surfX(q), d = -q.y, sec = surfSec(q), brk = smoothstep(150., 70., d) * sec;
       float faceZ = smoothstep(.8, .97, x), thin = smoothstep(.93, 1., x) * smoothstep(.0, .6, n.z);
-      vec3 body = hz2 * vec3(.035, .04, .03);                                             // deep water body under a dusk sky
-      vec3 trans = (hz2 * .7 + vec3(dot(hz2, vec3(.33)))) * vec3(.13, .15, .075) * thin * (.5 + .5 * brk);                       // sky light glowing through the thin face
+      vec3 body = hz2 * uTint * .22;                                             // deep water body under a dusk sky
+      vec3 trans = (hz2 * .7 + vec3(dot(hz2, vec3(.33)))) * uTint * .85 * thin * (.5 + .5 * brk);                       // sky light glowing through the thin face
       vec3 c = refl * F + body * (1. - F) + trans;
       c *= mix(1., .55, faceZ * (1. - thin) * smoothstep(.2, .8, n.z));                     // face turned away from the bright sky reads darker
       // whitewater: feathering lip (offshore = thin, clean), pitching/broken sections, soup on the inside
@@ -541,7 +542,7 @@ void main(){
       float foam = clamp(lip + soup + inside, 0., .95) * (1. - .5 * uOff * (1. - broke));
       vec3 fc = hz2 * .75 + refl * .25; fc = mix(vec3(dot(fc, vec3(.2126,.7152,.0722))), fc, .35) * 1.25;
       // direct sun on the waves: evening (sun behind viewer) = warm lit faces + golden glints; morning (sun ahead) = backlit
-      vec3 sL = ESUN * sunAtm * sunVis * smoothstep(-.015, .02, uSunA.y) * .045;
+      vec3 sL = ESUN * sunAtm * sunVis * smoothstep(-.015, .02, uSunA.y) * .045 * uBack;
       float fwd = max(dot(rd, uSunA), 0.), front = max(dot(n, uSunA), 0.);
       c += sL * front * (.35 + .65 * faceZ) * vec3(1., .85, .62) * (1. - F) * .8;   // golden-hour light straight onto the face                         // front-lit face (sunset, sun at your back)
       c += sL * pow(max(dot(reflect(rd, n), uSunA), 0.), 60.) * .8;                                      // golden glints on the groomed lines
@@ -584,7 +585,7 @@ void main(){
       t += clamp(d * .5, .015, 2.); if (t > 120.) break;
     }
     vec3 Ta; vec3 hz2 = skyRay(ro, normalize(vec3(rd.x, .001, rd.z)), pixA, false, Ta);
-    vec3 sL = ESUN * sunAtm * sunVis * smoothstep(-.015, .02, uSunA.y) * .045;   // direct sun only where it gets through cloud
+    vec3 sL = ESUN * sunAtm * sunVis * smoothstep(-.015, .02, uSunA.y) * .045 * uBack;   // direct sun only where it gets through cloud
     float fwd = max(dot(rd, uSunA), 0.);
     bool pierFirst = pier > .5 && tP < (ht > 0. ? ht : 1e9);
     if (ht > 0. && !pierFirst){
@@ -595,7 +596,7 @@ void main(){
       float s = inf.x, y = inf.y, Hh = inf.z, b = inf.w, yr = clamp(y / max(Hh, .1), 0., 1.);
       vec3 rv = reflect(rd, n); rv.y = max(rv.y, .004); vec3 Tr; vec3 refl = skyRay(ro, normalize(rv), pixA * 2., false, Tr);
       float F = .02 + .98 * pow(1. - max(dot(-rd, n), .02), 5.), front = max(dot(n, uSunA), 0.);
-      vec3 olive = vec3(.17, .21, .11);
+      vec3 olive = uTint * 1.05;
       vec3 sky = vec3(dot(hz2, vec3(.2126,.7152,.0722))) * .9 + hz2 * .25;   // face colour from the water itself, lit by sky brightness
       vec3 c;
       float tex = fbm(vec2(p.x * 1.1 - uSurfT * .8, y * 2.5 + s), 0., 5);
@@ -710,7 +711,8 @@ void main(){
     gl.uniform1f(U.uTwi, Math.max(0, Math.min(1, (1.5 - P.elev) / 3)) * Math.max(0, Math.min(1, (P.elev + 8) / 3))); gl.uniform1f(U.uGrainT, P.grain || 0.37);
     gl.uniform1f(U.uBlockGap, P.gap || 0);
     gl.uniform1f(U.uChop, P.chop != null ? P.chop : 0.3); gl.uniform1f(U.uSwell, P.swell || 0); gl.uniform1f(U.uCaps, P.caps || 0); gl.uniform1f(U.uPhase, P.phase || 0);
-    if (U.uSurf) { gl.uniform1f(U.uSurf, P.surf || 0); gl.uniform1f(U.uOff, P.off || 0); gl.uniform1f(U.uSurfT, P.surfT || 0); gl.uniform1f(U.uSurfL, P.surfL || 42); if (U.uHero) { gl.uniform1f(U.uHero, P.hero ? 1 : 0); gl.uniform1f(U.uHeroD, P.heroD || 26); } }
+    if (U.uSurf) { gl.uniform1f(U.uSurf, P.surf || 0); gl.uniform1f(U.uOff, P.off || 0); gl.uniform1f(U.uSurfT, P.surfT || 0); gl.uniform1f(U.uSurfL, P.surfL || 42); if (U.uTint) { const tn = P.tint || [0.15, 0.2, 0.12]; gl.uniform3f(U.uTint, tn[0], tn[1], tn[2]); gl.uniform1f(U.uBack, P.back != null ? P.back : 1); }
+    if (U.uHero) { gl.uniform1f(U.uHero, P.hero ? 1 : 0); gl.uniform1f(U.uHeroD, P.heroD || 26); } }
     gl.uniform1f(U.uMidH, clamp(P.midKm || 4.5, 2.5, 7.5));
     gl.uniform1f(U.uMeter, 0);
     const ovc = clamp((Math.max(P.mid, P.low, P.high * 0.6) - 0.5) / 0.45);
