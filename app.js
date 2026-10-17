@@ -271,15 +271,16 @@
 
   // ---------- Map ----------
   const map = L.map("map", { zoomControl: false, attributionControl: true, minZoom: 4 }).setView([34.5, -77.5], 5);
+  { const mc = document.getElementById("map"); map.on("movestart zoomstart", () => mc.classList.add("moving")); map.on("moveend zoomend", () => mc.classList.remove("moving")); }   // d14: pause pin animations while panning
   L.control.zoom({ position: "bottomright" }).addTo(map);
-  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", { attribution: "Tiles © Esri — Esri, HERE, Garmin, © OpenStreetMap contributors", maxZoom: 16 }).addTo(map);
+  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", { attribution: "Tiles © Esri — Esri, HERE, Garmin, © OpenStreetMap contributors", maxZoom: 16, updateWhenZooming: false, keepBuffer: 3 }).addTo(map);
   map.createPane("labels"); map.getPane("labels").style.zIndex = 450; map.getPane("labels").style.pointerEvents = "none";
-  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}", { pane: "labels", maxZoom: 16 }).addTo(map);
+  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}", { pane: "labels", maxZoom: 16, updateWhenZooming: false, keepBuffer: 3 }).addTo(map);
   const overlays = {
-    vis: L.tileLayer(Sat.tileUrl("vis"), { opacity: 0.7, attribution: "GOES-East via Iowa Env. Mesonet", maxNativeZoom: 8 }),
-    cirrus: L.tileLayer(Sat.tileUrl("cirrus"), { opacity: 0.7, attribution: "GOES-East via Iowa Env. Mesonet", maxNativeZoom: 8 }),
-    ir: L.tileLayer(Sat.tileUrl("ir"), { opacity: 0.6, attribution: "GOES-East via Iowa Env. Mesonet", maxNativeZoom: 8 }),
-    radar: L.tileLayer(Sat.tileUrl("radar"), { opacity: 0.7, attribution: "NEXRAD via Iowa Env. Mesonet", maxNativeZoom: 8 }),
+    vis: L.tileLayer(Sat.tileUrl("vis"), { opacity: 0.7, attribution: "GOES-East via Iowa Env. Mesonet", maxNativeZoom: 8, updateWhenZooming: false }),
+    cirrus: L.tileLayer(Sat.tileUrl("cirrus"), { opacity: 0.7, attribution: "GOES-East via Iowa Env. Mesonet", maxNativeZoom: 8, updateWhenZooming: false }),
+    ir: L.tileLayer(Sat.tileUrl("ir"), { opacity: 0.6, attribution: "GOES-East via Iowa Env. Mesonet", maxNativeZoom: 8, updateWhenZooming: false }),
+    radar: L.tileLayer(Sat.tileUrl("radar"), { opacity: 0.7, attribution: "NEXRAD via Iowa Env. Mesonet", maxNativeZoom: 8, updateWhenZooming: false }),
   };
   document.querySelectorAll("[data-overlay]").forEach(b => b.addEventListener("click", () => {
     const o = b.dataset.overlay; state.overlay = o;
@@ -303,10 +304,11 @@
       const bx = (B.dog.p >= BONUS_MIN ? `<em class="pb dog" title="Sun dogs ${B.dog.p}%">◉</em>` : "") + ((window.AGX && AGX.badges(r.spot)) || "");
       const html = `<div class="pin${T.on ? " tri" : ""}" style="--c:${lb.c}"><span>${r.ev.score}</span>${bx}${T.on ? `<em class="ptri" title="Trifecta">✦</em>` : ""}${ic.length ? `<div class="pwx">${ic.map(x => `<i class="${x.c}" title="${x.t}">${x.i}</i>`).join("")}</div>` : ""}</div>`;
       const icon = L.divIcon({ className: "pin-wrap", html, iconSize: [30, 30], iconAnchor: [15, 15] });
-      if (markers[r.spot.id]) markers[r.spot.id].setIcon(icon);
+      if (markers[r.spot.id]) { if (markers[r.spot.id]._agHtml !== html) markers[r.spot.id].setIcon(icon); }   // d14: skip unchanged pins (was rebuilding all ~70 pin DOM nodes on every refresh)
       else markers[r.spot.id] = L.marker(vPos(r.spot), { icon, riseOnHover: true }).addTo(map)
         .on("click", () => openDetail(r.spot.id))
         .bindTooltip("", { direction: "top", offset: [0, -16], className: "tip" });
+      markers[r.spot.id]._agHtml = html;
       markers[r.spot.id].setTooltipContent(`<b>${r.spot.name}</b>${r.spot.vantage ? `<br><small>☀ from ${r.spot.vantage.name}</small>` : ""}<br>${lb.t} · ${fmtTime(r.ev.tSet, r.tz)}${r.ev.bonus.bow.p >= BONUS_MIN ? `<br>🌈 ${r.ev.bonus.bow.name} ${r.ev.bonus.bow.p}%` : ""}${r.ev.bonus.dog.p >= BONUS_MIN ? `<br>◉ Sun dogs ${r.ev.bonus.dog.p}% — 22° either side of the sun, needs thin cirrus/cirrostratus with the sun under ~${RISE?"20":"20"}° up` : ""}${(window.AGX && AGX.tip(r.spot)) || ""}${r.ev.wx.items.map(w => `<br>${w.icon} ${w.name}${w.p ? " " + w.p + "%" : ""}`).join("")}${r.ev.tri.on ? `<br><b class="tt-tri">✦ TRIFECTA</b>` : ""}`);
       if (markers[r.spot.id].setZIndexOffset) markers[r.spot.id].setZIndexOffset(r.ev.tri.on ? 1000 : ic.length ? 200 : 0);
     });
@@ -511,8 +513,24 @@
     const cv = $("#pv"), sl = $("#scrub"), sp = r.spot, ev = r.ev; if (!cv || !sl) return;
     if (tKeep) sl.value = tKeep;
     let raf = 0, playing = 0;
+    // d14: ONE animation loop for the whole app (token kills loops left over from a previous spot), locked to 30 fps,
+    // adaptive resolution for animated frames, paused while the map is showing or the tab is hidden.
+    const AN = window.__agAnim || (window.__agAnim = { n: 0, tok: 0, id: 0, last: 0, ema: 33, scale: 0.8 });
+    if (AN.id) { cancelAnimationFrame(AN.id); AN.id = 0; } const myTok = AN.tok = ++AN.n;
+    const alive = () => AN.tok === myTok && !document.hidden && document.body.classList.contains("detail-open") && document.body.contains(cv);
+    const animLoop = ts => { AN.id = 0; if (!alive()) return;
+      const dt = ts - AN.last;
+      if (dt >= 1000 / 30 - 4) {
+        if (AN.last) { AN.ema = AN.ema * 0.85 + Math.min(dt, 250) * 0.15;
+          if (AN.ema > 40 && AN.scale > 0.5) AN.scale = Math.max(0.5, AN.scale * 0.92);        // can't hold 30 fps → fewer pixels
+          else if (AN.ema < 35 && AN.scale < 1) AN.scale = Math.min(1, AN.scale * 1.03); }        // headroom → claw quality back
+        AN.last = ts; render(true);
+        if (!(PhotoStage.last && PhotoStage.last.surf)) return; }
+      AN.id = requestAnimationFrame(animLoop); };
+    const startAnim = () => { if (!AN.id && AN.tok === myTok) { AN.last = 0; AN.id = requestAnimationFrame(animLoop); } };
     const word = l => l.lit < 0.08 ? "in shadow" : (l.c[1] > 200 ? "lit gold-white" : l.c[1] > 150 ? "lit gold" : l.c[1] > 100 ? "lit orange" : "lit pink-red");
-    const render = () => {
+    const render = anim => {
+      if (anim !== true) anim = false;
       raf = 0; const t = +sl.value; state.pvT = t; state.pvSpot = sp.id;
       const back = $("#pv-back"), turned = !!state.turn && back;
       // Draft: when the view behind you is open water, render it with the same photoreal sky+water shader (sun behind camera)
@@ -541,9 +559,11 @@
       const backWater = turned && sp.behind && sp.behind.water && window.Photoreal;
       let o = backWater ? PhotoStage.draw(cv, Object.assign({}, sp, { far: sp.behind.far || "open", water: true, type: sp.type === "Pier" ? "Pier" : "Beach" }), ev, t, Object.assign({ lq: dragging, sunAzOff: 180 }, wOpt())) : null;
       if (o && o.mode !== "live") o = null;
-      if (!o) o = turned ? Object.assign(Preview.state(sp, ev, t), Preview.drawBehind(back, sp, ev, t), { mode: "behind" }) : PhotoStage.draw(cv, sp, ev, t, Object.assign({ lq: dragging }, wOpt()));
+      const aq = anim ? { scale: AN.scale, dprCap: 1.5, fast: AN.scale < 0.62 ? 1 : 0 } : {};   // d14: animated frames: capped DPR + adaptive scale; stills stay full quality
+      if (!o) o = turned ? Object.assign(Preview.state(sp, ev, t), Preview.drawBehind(back, sp, ev, t), { mode: "behind" }) : PhotoStage.draw(cv, sp, ev, t, Object.assign({ lq: dragging }, wOpt(), aq));
+      if (anim) return;   // d14: animation frames only redraw the WebGL scene — no DOM/label/weather recompute
       const turnedIll = turned && o.mode === "behind";
-      if (o.mode === "live" && !/[?&]still=1/.test(location.search) && (window.PhotoStage && PhotoStage.last && PhotoStage.last.surf) && document.body.contains(cv)) { clearTimeout(window.__agSurfTO); window.__agSurfTO = setTimeout(queue, 70); }   // keep the surf breaking (~12 fps)
+      if (o.mode === "live" && !/[?&]still=1/.test(location.search) && (window.PhotoStage && PhotoStage.last && PhotoStage.last.surf) && !dragging && !playing) startAnim();   // d14: keep the surf breaking at a steady 30 fps (was setTimeout 70 ms full re-render, ~12 fps, kept running behind the map)
       if (back) back.hidden = !turnedIll;
       { const d = $("#pv-dir"), az = turned ? (ev.sunsetAz + 180) % 360 : ev.sunsetAz; if (d) d.textContent = (turned ? "↻ Behind you · facing " : "Facing ") + compass(az) + " " + Math.round(az) + "°"; }
       if (turned) { ph.forEach(im => im.style.opacity = 0); if (badge) badge.textContent = !turnedIll ? "180° view · realistic render from forecast" : o.bow ? `🌈 Rainbow ${ev.bonus.bow.p}% in view · 180° view · illustrated` : "180° view behind you · illustrated · not a photo"; }
@@ -575,7 +595,7 @@
     };
     const queue = () => { if (!raf) raf = requestAnimationFrame(render); }; window.__agQueue = queue;
     let wxT = 0, wxC = null, wxRaf = 0;
-    const wxLoop = now => { wxRaf = 0; const wc = $("#pv-wx"); if (!wc || !document.body.contains(cv)) return;
+    const wxLoop = now => { wxRaf = 0; const wc = $("#pv-wx"); if (!wc || !document.body.contains(cv) || document.hidden || !document.body.classList.contains("detail-open")) return;   // d14: no weather overlay drawing behind the map / in a hidden tab
       if (wxC) Wx.draw(wc, wxC, wxT, now); else { const c2 = wc.getContext("2d"); c2.setTransform(1, 0, 0, 1, 0, 0); c2.clearRect(0, 0, wc.width, wc.height); }
       if (wxC && (wxC.rain || wxC.snow || wxC.bolt || wxC.sea || wxC.torn || wxC.dune || wxC.shore)) wxRaf = requestAnimationFrame(wxLoop); };
     let dragging = false, hqT = 0, photoOn = true;
@@ -614,6 +634,7 @@
       playing = requestAnimationFrame(step);
     };
     render();
+    if (!window._pvVis) { window._pvVis = true; document.addEventListener("visibilitychange", () => { if (!document.hidden && state.spot && window.__agQueue) window.__agQueue(); }); }   // d14: resume after tab comes back
     if (!window._pvResize) { window._pvResize = true; window.addEventListener("resize", () => { const s2 = $("#scrub"); if (s2 && state.spot) s2.dispatchEvent(new Event("input")); }); }
   }
   async function openDetail(id, keepScroll) {
@@ -721,7 +742,7 @@
     const box = $("#satread"); if (!box) return;
     box.innerHTML = res.error ? `<p>${res.error}</p>` : `<ul>${res.text.map(t => `<li>${t}</li>`).join("")}</ul><div class="fine">Sampled from GOES-19 (GOES-East) ABI band 2 (visible, 0.64 µm), band 4 (cirrus, 1.37 µm) and band 13 (clean IR, 10.3 µm) at ${new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZoneName: "short" }).format(res.when)}. Pixel-color heuristics, not calibrated retrievals.</div>`;
   }
-  function closeDetail() { state.spot = null; $("#detail").classList.remove("open"); document.body.classList.remove("detail-open"); }
+  function closeDetail() { if (window.__agAnim && window.__agAnim.id) { cancelAnimationFrame(window.__agAnim.id); window.__agAnim.id = 0; } state.spot = null; $("#detail").classList.remove("open"); document.body.classList.remove("detail-open"); }
   $("#detail-close").addEventListener("click", closeDetail);
   $("#scrim").addEventListener("click", closeDetail);
   document.addEventListener("keydown", e => e.key === "Escape" && closeDetail());

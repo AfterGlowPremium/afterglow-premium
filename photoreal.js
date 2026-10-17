@@ -43,7 +43,7 @@ uniform float uOff;     // DRAFT: offshore wind 0..1 (grooms faces, spray blown 
 uniform float uSurfT;   // DRAFT: wave clock (s)
 uniform float uSurfL;
 uniform vec3 uTint; uniform float uBack;   // DRAFT: dials from looks.js — water tint, backlight scale
-uniform float uHero; uniform float uHeroD; uniform float uMess;
+uniform float uFast; uniform float uHero; uniform float uHeroD; uniform float uMess;
    // v17: uMess 0 clean … 1 blown-out onshore crumbler
     // DRAFT: 1 = hero curling barrel wave (own shape) at uHeroD metres   // DRAFT: breaker spacing (m)   // wave motion phase (advances with the slider / Play)
 
@@ -555,7 +555,7 @@ void main(){
   // ---------- DRAFT: breaking surf rendered as geometry (faces stand up above the eye-level water line) ----------
   if (uSurf > .05 && uWater > .5 && rd.y < .03 && rd.y > -.6){
     float camM = uCamH * 1000., t = 4., hitT = -1., sprayA = 0., lipHit = 0., lipU = 0.;
-    for (int i = 0; i < 180; i++){
+    for (int i = 0; i < 180; i++){ if (uFast > .5 && i >= 130) break;   // d14: shorter march only when the phone can't hold 30 fps
       vec3 p = rd * t; float h = -camM + surfH(p.xz), dy = p.y - h;
       // curling lip: a thin sheet thrown forward from the crest over the pocket, only on the pitching section by the peel front
       { float x = surfX(p.xz), d = -p.z, sec = surfSec(p.xz), brk = smoothstep(110., 40., d) * sec * smoothstep(.35, 1.7, uSurf), fw = mix(.1, .022, brk);
@@ -637,7 +637,7 @@ void main(){
   // ---------- DRAFT: hero wave render ----------
   if (uHero > .5 && uSurf > .2 && uWater > .5 && rd.y < .12 && rd.y > -.5){
     float camM = uCamH * 1000., t = 1., ht = -1., mat = 0., spr = 0., fDen = 0., fY = 0.; vec4 inf;
-    for (int i = 0; i < 140; i++){
+    for (int i = 0; i < 140; i++){ if (uFast > .5 && i >= 105) break;
       vec3 p = rd * t; float m; vec4 I; float d = heroSDF(p, camM, m, I);
       if (d < .004 + t * .0006){ ht = t; mat = m; inf = I; break; }
       // spindrift: fine mist trailing back (away from camera) off the unbroken crest, length/density with offshore wind
@@ -778,11 +778,11 @@ void main(){
   function render(canvas, P) {
     const st = setup(canvas); if (!st) return false;
     const { gl, pr, U } = st;
-    const dpr = P.w ? 1 : Math.min(window.devicePixelRatio || 1, 2), sc = P.lq ? 0.42 : (P.scale || 1);
+    const dpr = P.w ? 1 : Math.min(window.devicePixelRatio || 1, P.dprCap || 2), sc = P.lq ? 0.42 : (P.scale || 1);
     const W = P.w || canvas.clientWidth || 600, H = P.h || canvas.clientHeight || 340;
     const w = Math.max(64, Math.round(W * dpr * sc)), h = Math.max(48, Math.round(H * dpr * sc));
     if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
-    gl.viewport(0, 0, w, h); gl.useProgram(pr);
+    gl.viewport(0, 0, w, h); gl.useProgram(pr); if (U.uFast) gl.uniform1f(U.uFast, P.fast ? 1 : 0);
     const d2r = Math.PI / 180, e = P.elev * d2r, ea = (P.elev + refr(P.elev)) * d2r, az = (P.sunAzOff || 0) * d2r;
     const dir = (el) => [Math.cos(el) * Math.sin(az), Math.sin(el), -Math.cos(el) * Math.cos(az)];
     gl.uniform2f(U.uRes, w, h);

@@ -45,12 +45,12 @@ button{font:inherit;color:inherit;cursor:pointer}
 .leaflet-control-attribution{background:rgba(13,10,26,.7)!important;color:var(--dim)!important;font-size:10px}
 .leaflet-control-attribution a{color:var(--mute)!important}
 .leaflet-bar a{background:rgba(30,22,52,.9)!important;color:var(--ink)!important;border-color:var(--line)!important}
-.overlay-ctl{position:absolute;top:12px;left:12px;z-index:500;display:flex;gap:4px;padding:4px;border-radius:12px;background:rgba(13,10,26,.75);border:1px solid var(--line);backdrop-filter:blur(10px)}
+.overlay-ctl{position:absolute;top:12px;left:12px;z-index:500;display:flex;gap:4px;padding:4px;border-radius:12px;background:rgba(13,10,26,.75);border:1px solid var(--line)}
 .overlay-ctl button,.seg button{background:none;border:0;padding:7px 11px;border-radius:9px;font-size:12.5px;color:var(--mute);transition:.2s}
 .overlay-ctl button.on,.seg button.on{background:linear-gradient(135deg,var(--ember),var(--rose));color:#fff}
-.overlay-note{position:absolute;top:58px;left:12px;z-index:500;max-width:300px;font-size:12px;color:var(--mute);background:rgba(13,10,26,.75);border-radius:10px;padding:0 10px;backdrop-filter:blur(8px)}
+.overlay-note{position:absolute;top:58px;left:12px;z-index:500;max-width:300px;font-size:12px;color:var(--mute);background:rgba(13,10,26,.75);border-radius:10px;padding:0 10px}
 .overlay-note:not(:empty){padding:7px 10px}
-.legend{position:absolute;left:12px;bottom:12px;z-index:500;display:flex;gap:10px;padding:7px 12px;border-radius:12px;background:rgba(13,10,26,.75);font-size:11.5px;color:var(--mute);backdrop-filter:blur(8px)}
+.legend{position:absolute;left:12px;bottom:12px;z-index:500;display:flex;gap:10px;padding:7px 12px;border-radius:12px;background:rgba(13,10,26,.75);font-size:11.5px;color:var(--mute)}
 .legend span::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--c);margin-right:5px;box-shadow:0 0 8px var(--c)}
 
 .pin-wrap{background:none;border:0}
@@ -566,3 +566,11 @@ body.in-archive .hero{outline:1px dashed rgba(181,169,255,.5)}
 .readout #pv-sea small .wdir em.off{color:#7fe3a8}.readout #pv-sea small .wdir em.on{color:#ff9a7a}.readout #pv-sea small .wdir em.cross{color:#ffd27a}.readout #pv-sea small .wdir em.calm{color:#bfe0ff}
 .readout #pv-sea small em.wrel{font-style:normal;font-weight:700}
 .readout #pv-sea small em.wrel.off{color:#7fe3a8}.readout #pv-sea small em.wrel.on{color:#ff9a7a}.readout #pv-sea small em.wrel.cross{color:#ffd27a}.readout #pv-sea small em.wrel.calm{color:#bfe0ff}
+
+/* d14: map smoothness — no backdrop blur over the moving map (re-blurred every frame), pin glow pulses on a composited
+   pseudo-element (opacity only, no box-shadow repaint), and pin animations pause while panning/zooming */
+#map.moving .pin, #map.moving .pin *, #map.moving .pin::after{animation-play-state:paused!important}
+.pin.tri{animation:none}
+.pin.tri::after{content:"";position:absolute;inset:-6px;border-radius:50%;box-shadow:0 0 38px #ffd75e;opacity:0;pointer-events:none;will-change:opacity;animation:tripulse2 2s ease-in-out infinite}
+@keyframes tripulse2{50%{opacity:1}}
+.pin .pb,.pin .pwx i{filter:none;text-shadow:0 1px 2px rgba(0,0,0,.7)}
