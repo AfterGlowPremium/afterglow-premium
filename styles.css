@@ -540,3 +540,9 @@ body.in-archive .hero{outline:1px dashed rgba(181,169,255,.5)}
 #music-btn{position:fixed;left:12px;bottom:14px;z-index:950;width:42px;height:42px;border-radius:50%;border:1px solid rgba(255,255,255,.25);background:rgba(14,16,28,.55);color:#fff;font-size:18px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
 #music-btn.on{background:rgba(255,154,90,.85);color:#111}
 #music-btn.off::after{content:"";position:absolute;left:9px;right:9px;top:50%;height:2px;background:#fff;transform:rotate(-40deg)}
+
+/* neutral 'forecast unavailable' scene: flat overcast sky, gray sea, no surf */
+.neutral-scene{position:fixed;inset:0;z-index:0}
+.neutral-scene .ns-sky{position:absolute;inset:0 0 42% 0;background:linear-gradient(#8d949b,#b9bec2 85%,#c9cccd)}
+.neutral-scene .ns-sea{position:absolute;inset:58% 0 0 0;background:linear-gradient(#7f878c,#5f676c);box-shadow:0 -1px 0 #9aa1a5}
+.ns-msg{position:relative;z-index:1;margin-top:30vh;background:rgba(20,24,28,.55);padding:14px 16px;border-radius:12px}

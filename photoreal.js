@@ -316,27 +316,51 @@ float surfH(vec2 p){
 
 // ---------- DRAFT: hero breaking wave as its own shape (2D cross-section swept along the wave line) ----------
 // peel front moves right-to-left; right of it = exploded whitewater, at it = barrel (lip thrown over a hollow), left = steep open shoulder
-float heroPX(){ return 6. - mod(uSurfT * 3.2, 15.); }   // crosses the view right→left in ~4 s
+float heroPX(){ return -mod(uSurfT * 3.75, 15.); }   // 4 s period; rel is wrapped so the loop is seamless   // crosses the view right→left in ~4 s
+float gFoamD = 1e3;   // foam distance from the last heroSDF call (foam is volumetric, not a surface)
 float heroSDF(vec3 p, float camM, out float mat, out vec4 info){
-  float H = uSurf * 1.05, D = uHeroD + .004 * p.x * p.x;
-  float s = p.z + D, y = p.y + camM, rel = p.x - heroPX();
-  float b = smoothstep(-9., -1.5, rel) * (1. - smoothstep(-.3, 1.2, rel)) * smoothstep(.15, .45, uOff + .25);   // barrel section (needs offshore/light wind)
-  float Hh = H * (.5 + .5 * smoothstep(-26., -3., rel)) * (1. - .35 * smoothstep(0., 6., rel));
-  float top = s < 0. ? Hh * exp(-pow(-s / (1.9 * Hh + .5), 2.)) : Hh;
-  float dB = max(y - top, s - (.38 - .3 * b) * Hh * (1. - clamp(y / Hh, 0., 1.)) - .05);
-  dB = max(dB, .02 - y);   // body only above the water line (no hidden slab)
-  vec2 q = vec2(s, y), c = vec2(.42 * Hh, .52 * Hh); float r = .45 * Hh, th = .05 * Hh + .03;
-  dB = b > .05 ? max(dB, -(length(q - c) - (r - th)) * b - (1. - b) * 10.) : dB;   // hollow pocket
-  float a = atan(q.y - c.y, q.x - c.x), aMin = mix(1.2, -.55, b);
+  { float cz = p.z + uHeroD; p = vec3(p.x * .927 + cz * .375, p.y, -p.x * .375 + cz * .927 - uHeroD); }   // ~22° down-the-line view
+  // 2D profile swept along the crest. Phase from distance to the peel point (rel<0 = unbroken, peel moves right→left):
+  // round swell → steep concave wall → lip pitches past vertical → tube → impact/foam → soup
+  float H = uSurf * 1.05, D = uHeroD + .003 * p.x * p.x;
+  float s = p.z + D, y = p.y + camM, rel = (mod(p.x * .927 + (p.z + uHeroD) * .375 - heroPX() + 9., 15.) - 9.) * 1.7;   // phases compressed so the whole sequence fits the view
+  float offOK = smoothstep(.15, .45, uOff + .25);
+  float steep = smoothstep(-13., -4., rel) * (1. - smoothstep(2., 9., rel));                       // 0 round … 1 vertical wall
+  float pitch = smoothstep(-4.5, 0., rel) * offOK;                 // lip throw 0 … 1 (lands at the peel)
+  float broke = smoothstep(-.2, 1.5, rel);
+  float Hh = H * (.45 + .55 * smoothstep(-15., -6., rel)) * (1. - .55 * smoothstep(0., 7., rel));
+  float wf = mix(1.5, .38, steep) * Hh + .05, wb = 1.9 * Hh + .4;  // front / back half-widths
+  float top = Hh * exp(-pow(s / (s > 0. ? wf : wb), 2.));
+  float dB = (y - top) * .6;
+  dB = max(dB, .02 - y);
+  // hollow tube: carve a disc in front, below the crest
+  vec2 q = vec2(s, y), c = vec2(.18 * Hh, .5 * Hh); float r = .5 * Hh;
+  float carve = pitch * (1. - broke);
+  if (carve > .02) dB = max(dB, -(length(q - c) - r * (.55 + .45 * carve)));
+  // lip: annulus arc from the back of the crest round past vertical; tip angle falls with pitch
   float dL = 1e3;
-  if (b > .05){ dL = (a > aMin && a < 1.75) ? abs(length(q - c) - r) - th : min(length(q - c - r * vec2(cos(aMin), sin(aMin))), length(q - c - r * vec2(cos(1.75), sin(1.75)))) - th; }
-  float ff = smoothstep(-.3, 1.2, rel) * (1. - smoothstep(3., 7., rel));   // whitewater only next to the peel point
-  float nz = ff > .02 ? fbm(vec2(p.x * .9 - uSurfT * 1.2, y * 1.4 + s * .6), 0., 3) : .5;
-  float dF = length(vec2(s - .3 * H, y - .32 * H) * vec2(.8, 1.)) - .62 * H * (.7 + .6 * nz) * ff;
-  dF = ff > .02 ? dF : 1e3;
+  if (pitch > .02 && broke < .95){
+    float a0 = 3.0; float a1 = mix(1.5, -1.25, pitch);
+    float rag = fbm(vec2(p.x * 2.3, uSurfT * .7), 0., 3);
+    a1 += (rag - .5) * .5 * pitch;                                     // ragged, uneven throw along the crest
+    float ang = atan(q.y - c.y, q.x - c.x); float u = clamp((a0 - ang) / max(a0 - a1, .1), 0., 1.);
+    float th = (mix(.06, .008, u) * Hh + .008) * (1. - broke) * (.7 + .6 * rag);   // thin sheet, feathered tip
+    vec2 tip = c + r * vec2(cos(a1), sin(a1));
+    dL = (ang < a0 && ang > a1) ? abs(length(q - c) - r) - th : length(q - tip) - th;
+  }
+  // impact explosion right at the peel + soup behind it
+  float ff = smoothstep(-.2, .8, rel) * (1. - smoothstep(3., 6., rel));
+  float dF = 1e3;
+  if (ff > .02){ float nz = fbm(vec2(p.x * .9 - uSurfT * 1.4, y * 1.5 + s * .6), 0., 3);
+    float boom = smoothstep(-.6, .8, rel) * (1. - smoothstep(1.5, 5., rel));
+    float nz2 = fbm(vec2(p.x * 5.3 + s * 3.1, y * 6.2 - uSurfT * 3.), 0., 4);
+    vec2 bc = vec2(s - (.35 + .5 * boom) * H, y - (.15 + .35 * boom) * H);
+    dF = length(bc * vec2(.7, 1.)) - (.15 + .55 * boom) * H * (.3 + .7 * nz + .9 * nz2) * ff * (1. - .6 * smoothstep(2.5, 5.5, rel));
+    float soup = max(y - .18 * H * (.5 + nz) * smoothstep(0., 2., rel), abs(s - .3 * H) - .6 * H);
+  }
   float d = min(dB, dL); mat = dL < dB ? 1. : 0.;
-  if (dF < d){ d = dF; mat = 2.; }
-  info = vec4(s, y, Hh, b); return d;
+  gFoamD = dF;
+  info = vec4(s, y, Hh, pitch * (1. - broke)); return d;
 }
 
 vec3 aces(vec3 x){ return clamp((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14), 0., 1.); }
@@ -572,17 +596,19 @@ void main(){
 
   // ---------- DRAFT: hero wave render ----------
   if (uHero > .5 && uSurf > .2 && uWater > .5 && rd.y < .12 && rd.y > -.5){
-    float camM = uCamH * 1000., t = 1., ht = -1., mat = 0., spr = 0.; vec4 inf;
+    float camM = uCamH * 1000., t = 1., ht = -1., mat = 0., spr = 0., fDen = 0., fY = 0.; vec4 inf;
     for (int i = 0; i < 140; i++){
       vec3 p = rd * t; float m; vec4 I; float d = heroSDF(p, camM, m, I);
       if (d < .004 + t * .0006){ ht = t; mat = m; inf = I; break; }
       // spindrift: fine mist trailing back (away from camera) off the unbroken crest, length/density with offshore wind
-      if (uOff > .05){ float s = I.x, y = I.y, Hh = I.z, rel = p.x - heroPX();
+      if (uOff > .05){ float s = I.x, y = I.y, Hh = I.z, rel = (mod(p.x * .927 + (p.z + uHeroD) * .375 - heroPX() + 9., 15.) - 9.) * 1.7;
         float zone = smoothstep(.3, -.1, s) * smoothstep(-(2. + 9. * uOff), -.5, s) * smoothstep(1.5, -2., rel);
         float above = y - Hh * .85;
         if (zone > 0. && above > -.2 && above < 5.){ float nz = fbm(vec2(p.x * .5 + uSurfT * 1.5, y * 1.8 - uSurfT * 2.2 + s * .3), 0., 4);
           spr += exp(-max(above, 0.) / (.4 + 1.3 * uOff)) * zone * smoothstep(.3, .7, nz) * uOff * .1 * min(d, 1.); } }
-      t += clamp(d * .5, .015, 2.); if (t > 120.) break;
+      float stp = clamp(d * .5, .015, 2.); if (gFoamD < .6) stp = min(stp, .08 + t * .002);
+      if (gFoamD < .35){ float dn = smoothstep(.35, -.35, gFoamD) * stp * 2.2; fDen += dn; fY += dn * clamp(I.y / max(I.z, .1), 0., 1.3); }
+      t += stp; if (t > 120. || fDen > 6.) break;
     }
     vec3 Ta; vec3 hz2 = skyRay(ro, normalize(vec3(rd.x, .001, rd.z)), pixA, false, Ta);
     vec3 sL = ESUN * sunAtm * sunVis * smoothstep(-.015, .02, uSunA.y) * .045 * uBack;   // direct sun only where it gets through cloud
@@ -595,8 +621,8 @@ void main(){
                               heroSDF(p + vec3(0,0,e), camM, m, I) - heroSDF(p - vec3(0,0,e), camM, m, I)));
       float s = inf.x, y = inf.y, Hh = inf.z, b = inf.w, yr = clamp(y / max(Hh, .1), 0., 1.);
       vec3 rv = reflect(rd, n); rv.y = max(rv.y, .004); vec3 Tr; vec3 refl = skyRay(ro, normalize(rv), pixA * 2., false, Tr);
-      float F = .02 + .98 * pow(1. - max(dot(-rd, n), .02), 5.), front = max(dot(n, uSunA), 0.);
-      vec3 olive = uTint * 1.05;
+      float F = .04 + .96 * pow(1. - max(dot(-rd, n), .02), 5.), front = max(dot(n, uSunA), 0.);
+      vec3 olive = uTint * 2.3;
       vec3 sky = vec3(dot(hz2, vec3(.2126,.7152,.0722))) * .9 + hz2 * .25;   // face colour from the water itself, lit by sky brightness
       vec3 c;
       float tex = fbm(vec2(p.x * 1.1 - uSurfT * .8, y * 2.5 + s), 0., 5);
@@ -605,22 +631,29 @@ void main(){
         float thin = smoothstep(.55, 1., yr);
         vec3 trans = sky * olive * (.5 + 1.6 * thin) + sL * pow(fwd, 3.) * thin * vec3(.45, .65, .3) * 2.2;   // light through the upper third
         c = refl * F + trans * (1. - F);
-        c *= .78 + .3 * fbm(vec2(p.x * .7, y * 6.), 0., 3);                                     // streaks running down the face
-        c *= mix(1., .5, b * smoothstep(.35 * Hh, -.1, length(vec2(s, y) - vec2(.42 * Hh, .52 * Hh)) - .3 * Hh));   // shadowed pocket
+        c += sL * pow(max(dot(rv, uSunA), 0.), 120.) * 3. + refl * .12;   // wet: sun glint + sky sheen
+        c *= .7 + .45 * fbm(vec2(p.x * 3.5 + y * .4, y * .7 - uSurfT * .3), 0., 4);   // streaks running down the face                                     // streaks running down the face
+        c *= mix(1., .35, b * smoothstep(.3 * Hh, -.05, length(vec2(s, y) - vec2(.18 * Hh, .5 * Hh)) - .25 * Hh));   // shadowed pocket
         c += sL * front * vec3(1., .85, .62) * .6 * (1. - F);                                   // evening sun on the face
-        float relp = p.x - heroPX(); float crestFoam = smoothstep(.93, 1., yr) * smoothstep(.45, .75, tex) * (.3 + .7 * smoothstep(-6., 0., relp)) + smoothstep(1., 4., relp) * smoothstep(.35, .7, tex);
+        float relp = (mod(p.x * .927 + (p.z + uHeroD) * .375 - heroPX() + 9., 15.) - 9.) * 1.7; float crestFoam = smoothstep(.93, 1., yr) * smoothstep(.45, .75, tex) * (.3 + .7 * smoothstep(-6., 0., relp)) + smoothstep(1., 4., relp) * (1. - smoothstep(5., 9.5, relp)) * smoothstep(.35, .7, tex);
         c = mix(c, fc, crestFoam * .7);
       } else if (mat < 1.5){
-        c = sky * olive * 2.4 + sL * (pow(fwd, 3.) * vec3(.5, .7, .32) * 2.5 + front * .4);     // thin thrown lip, translucent
+        float rim = pow(1. - abs(dot(n, -rd)), 2.);   // grazing view through the thin sheet = glowing edge
+        vec3 sss = sky * olive * 2.6 + sL * pow(fwd, 2.) * vec3(.55, .8, .35) * 3.;   // light transmitted through the sheet, olive subsurface tint
+        c = refl * F * 1.2 + sss * (1. - F) + rim * (sky * vec3(.3, .4, .26) + sL * vec3(.6, .8, .4) * (.3 + fwd));
         c = mix(c, fc, smoothstep(.5, .8, tex) * .6);
       } else {
-        c = fc * (.75 + .45 * fbm(vec2(p.x * 2.2, y * 2.4 - uSurfT * 1.5), 0., 5));             // exploded turbulent whitewater
+        c = fc * 1.45 * (.7 + .55 * fbm(vec2(p.x * 2.2, y * 2.4 - uSurfT * 1.5), 0., 5));             // exploded turbulent whitewater
       }
       float fog = 1. - exp(-ht * .001 * (BMe * 1.3 + BR.g));
       col = mix(c, hz2 * .9, clamp(fog, 0., 1.));
     }
     if (!pierFirst){ vec3 sc = mix(vec3(dot(hz2, vec3(.2126,.7152,.0722))), hz2, .5) * 1.1 + ESUN * sunAtm * sunVis * smoothstep(-.015, .02, uSunA.y) * .05 * (pow(fwd, 5.) * 6. + .4) * vec3(1., .82, .62);
       col = mix(col, sc, clamp(spr, 0., .65)); }
+    if (!pierFirst && fDen > .001){   // soft volumetric whitewater: brighter tops, shadowed cores, sun-lit when it gets through
+      float lum = dot(hz2, vec3(.2126,.7152,.0722)); float top = fY / fDen;
+      vec3 fcol = vec3(lum * 1.7 + .02) * (.55 + .55 * top) + ESUN * sunAtm * sunVis * smoothstep(-.015, .02, uSunA.y) * .05 * uBack * (.4 + pow(fwd, 3.) * 2.) * vec3(1., .9, .78);
+      col = mix(col, fcol, 1. - exp(-fDen * 1.4)); }
   }
 
   // lens glare around the sun (scaled by how much sun gets through cloud)
