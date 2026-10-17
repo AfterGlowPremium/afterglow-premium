@@ -68,7 +68,7 @@
     let last = null;
     for (let attempt = 0; attempt < tries; attempt++) {
       try {
-        const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 12000);   // Open-Meteo sometimes never answers
+        const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 30000);   // Open-Meteo sometimes never answers
         try {
           const r = await fetch(`${base}?${p}`, { signal: ctl.signal });
           if (r.ok) { const j = await r.json(); return Array.isArray(j) ? j : [j]; }
@@ -514,9 +514,15 @@
       raf = 0; const t = +sl.value; state.pvT = t; state.pvSpot = sp.id;
       const back = $("#pv-back"), turned = !!state.turn && back;
       // Draft: when the view behind you is open water, render it with the same photoreal sky+water shader (sun behind camera)
-      const wOpt = () => { const m = window.AGX ? AGX.sea(sp, { dir: (ev.s || {}).wdir, mph: (ev.s || {}).wind }) : null; const zf = { fovMul: 1 / (state.zoom || 1) }; if (/[?&]sky=clear/.test(location.search)) Object.assign(zf, { high: 0.12, mid: 0, low: 0, block: 0, gap: 1 }); if (/[?&]sky=overcast/.test(location.search)) Object.assign(zf, { high: 0.4, mid: 0.95, low: 0.85, block: 1, gap: 0 }); if (!m || !m.ft) return zf; const r = { ...zf, swell: Math.min(1, m.ft / 8), phase: (t % 86400) / Math.max(4, m.per * 40) };
-        if (m.surf && m.ft >= 1.5) Object.assign(r, { surf: m.ft * 0.3048, off: m.off ? 1 : 0, surfT: (t % 900) + performance.now() / 1000, surfL: Math.max(30, Math.min(70, (m.per || 10) * 4.2)) });
+      const wOpt = () => { const m = window.AGX ? AGX.sea(sp, { dir: (ev.s || {}).wdir, mph: (ev.s || {}).wind }) : null; const zf = { fovMul: 1 / (state.zoom || 1) }; if (/[?&]sky=clear/.test(location.search)) Object.assign(zf, { high: 0.12, mid: 0, low: 0, block: 0, gap: 1, midKm: 4.5 }); if (/[?&]sky=overcast/.test(location.search)) Object.assign(zf, { high: 0.4, mid: 0.95, low: 0.85, block: 1, gap: 0 });
+      { const wxq = new URLSearchParams(location.search).get("wx");
+        if (wxq === "partly") Object.assign(zf, { high: 0.35, mid: 0.3, low: 0.2, block: 0.15, gap: 0.8 });
+        if (wxq === "fog") Object.assign(zf, { rh: 0.99, aod: 0.9, low: 0.5, block: 0.6 });
+        if (wxq === "rain") Object.assign(zf, { high: 0.5, mid: 0.9, low: 0.95, block: 1, gap: 0, aod: 0.35, rh: 0.95 });
+        if (wxq === "storm") Object.assign(zf, { high: 0.7, mid: 0.9, low: 0.9, block: 0.85, gap: 0.25, aod: 0.3, rh: 0.92 }); } if (!m || !m.ft) return zf; const r = { ...zf, swell: Math.min(1, m.ft / 8), phase: (t % 86400) / Math.max(4, m.per * 40) };
+        if (m.surf && m.ft >= 1.5) Object.assign(r, { hero: true, heroD: 24 + m.ft * 2, heroCam: 0.0013, surf: m.ft * 0.3048, off: m.off ? 1 : 0, surfT: (t % 900) + performance.now() / 1000, surfL: Math.max(30, Math.min(70, (m.per || 10) * 4.2)) });
         if (m.wl) { Object.assign(r, { chop: m.wl.chop, caps: m.wl.caps }); if (r.surf) r.off = m.wl.off; }
+        if (/[?&]wx=(rain|storm)/.test(location.search)) r.chop = Math.min(1, (r.chop || 0.2) + 0.3);   // rain-pocked surface
         return r; };
       const backWater = turned && sp.behind && sp.behind.water && window.Photoreal;
       let o = backWater ? PhotoStage.draw(cv, Object.assign({}, sp, { far: sp.behind.far || "open", water: true, type: sp.type === "Pier" ? "Pier" : "Beach" }), ev, t, Object.assign({ lq: dragging, sunAzOff: 180 }, wOpt())) : null;
@@ -533,7 +539,7 @@
       if (wxC) { if (o.mode !== "live") { wxC.rain = wxC.snow = wxC.fog = wxC.bolt = wxC.bow = 0; }   // canvas fallback draws its own weather
         const fw = turned ? (sp.behind && sp.behind.water) : sp.water, s0 = ev.s || {};
         wxC.wdir = s0.wdir; wxC.wind = s0.wind || wxC.wind; { const dm = window.AGX && AGX.sea(sp, {}); if (dm && dm.mph != null) { wxC.wind = dm.mph; wxC.wdir = dm.wdir; } } wxC.faceAz = turned ? (ev.sunsetAz + 180) % 360 : ev.sunsetAz;
-        wxC.sea = fw && window.AGX && o.mode !== "live" ? AGX.sea(sp, { dir: s0.wdir }) : null; wxC.trees = fw && sp.id === "grandview"; wxC.seaLbl = fw && window.AGX ? AGX.sea(sp, { dir: s0.wdir }) : null; wxC.torn = !!(window.AGX && AGX.alerts[sp.id] && AGX.alerts[sp.id].tornado) || /[?&]demo=tornado/.test(location.search); }   // canvas fallback already draws its own weather
+        wxC.sea = fw && window.AGX && o.mode !== "live" ? AGX.sea(sp, { dir: s0.wdir }) : null; wxC.trees = fw && sp.id === "grandview"; { const wxq = new URLSearchParams(location.search).get("wx"); if (wxq === "rain" || wxq === "storm") { wxC.rain = 0.75; wxC.rainName = "Rain"; } if (wxq === "storm") { wxC.bolt = 0.9; wxC.boltP = 60; } if (wxq === "fog") wxC.fog = 0.7; } wxC.seaLbl = fw && window.AGX ? AGX.sea(sp, { dir: s0.wdir }) : null; wxC.torn = !!(window.AGX && AGX.alerts[sp.id] && AGX.alerts[sp.id].tornado) || /[?&]demo=tornado/.test(location.search); }   // canvas fallback already draws its own weather
       { const wl = $("#pv-wxl"), tx = wxC ? Wx.label(wxC) : ""; if (wl) { wl.hidden = !tx; if (wl.dataset.tx !== tx || wl.dataset.o !== String(!!state.wxOpen)) { wl.dataset.tx = tx; wl.dataset.o = String(!!state.wxOpen);
         const ic = /🌪/.test(tx) ? "🌪 Weather alert" : /🌊/.test(tx) ? "🌊 Wave info" : "☁ Weather info";
         wl.innerHTML = state.wxOpen ? `<div class="wxp"><button class="wxx" aria-label="Close">✕</button>${tx.split("\n").map(l => `<div>${l}</div>`).join("")}</div>` : `<button class="wxc">${ic}</button>`;
@@ -677,7 +683,7 @@
       <div class="actions"><a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${vPos(sp).join(",")}">Directions ↗</a><button class="btn ghost" id="zoomto">Show on map</button></div>`;
     { const st = document.querySelector(".stage"), zs = $("#pv-zoom"), zo = $("#pv-zo");
       const setZ = z => { z = Math.max(1, Math.min(4, z)); state.zoom = z; zs.value = z; zo.textContent = z.toFixed(1) + "×"; window.__agQueue && __agQueue(); };
-      if (st && zs) { zs.oninput = () => setZ(+zs.value); { const S0 = window.AGX && AGX.sea(state.results.find(x => x.spot.id === id).spot, {}); setZ(keepScroll ? (state.zoom || 1) : (S0 && S0.surf && S0.ft >= 1.5 ? 2.2 : 1)); } zs.addEventListener("change", () => state.zoom = +zs.value);
+      if (st && zs) { zs.oninput = () => setZ(+zs.value); { const S0 = window.AGX && AGX.sea(state.results.find(x => x.spot.id === id).spot, {}); setZ(keepScroll ? (state.zoom || 1) : (S0 && S0.surf && S0.ft >= 1.5 ? 1.5 : 1)); } zs.addEventListener("change", () => state.zoom = +zs.value);
         let d0 = 0, z0 = 1; const dist = e => Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
         st.addEventListener("touchstart", e => { if (e.touches.length === 2) { d0 = dist(e); z0 = +zs.value; } }, { passive: true });
         st.addEventListener("touchmove", e => { if (e.touches.length === 2 && d0) { e.preventDefault(); setZ(z0 * dist(e) / d0); state.zoom = +zs.value; } }, { passive: false });
