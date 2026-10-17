@@ -375,7 +375,7 @@ float heroSDF(vec3 p, float camM, out float mat, out vec4 info){
     float fb = fbm(vec2(p.x * .35 - uSurfT * .2, dz * .45 - uSurfT * .5), 0., 4);
     float pat = smoothstep(.42, .7, fb) * smoothstep(.45, .9, lines) + .5 * smoothstep(.62, .8, fb) * (1. - smoothstep(.45, .9, lines));   // whitewater lines with gaps of open water
     float band = smoothstep(.0, 1.5, dz) * (1. - smoothstep(uHeroD - 4., uHeroD - 1., dz));
-    float hS = uMess * H * (.13 * pat - .035) * band * smoothstep(.25, .55, uChop);   // inside soup needs wind/chop: small clean offshore days stay clean                 // height field: foam only where pat is high, open water between lines
+    float hS = uMess * H * (.06 * pat - .014) * band * smoothstep(.25, .55, uChop);   // inside soup needs wind/chop: small clean offshore days stay clean                 // height field: foam only where pat is high, open water between lines
     float dS = (y - .02 - hS) * .45;
     dF = min(dF, dC);
     if (hS > .003) dSo = max(dS, .02 - y) * .7;   // no foam → no zero-thickness surface on the open water
@@ -494,7 +494,7 @@ void main(){
     float h0 = fbm(wm*ws, fpW*ws.y, 7);
     float hx = fbm((wm+vec2(e,0.))*ws, fpW*ws.y, 7);
     float hz = fbm((wm+vec2(0.,e))*ws, fpW*ws.y, 7);
-    float amp = mix(.004, .17, pow(uChop, .85));              // glassy → choppy
+    float amp = mix(.004, .17, pow(uChop, .85)) * (1. + 1.6 * uMess * smoothstep(80., 5., tW));   // glassy → choppy (v17: wind-blown chop up close on onshore days)
     vec3 n = normalize(vec3(-(hx-h0)/e*amp, 1., -(hz-h0)/e*amp*.6));
     // swell: long rolling crests (wave height from the marine forecast) — tilts the whole reflection in broad bands
     float sk = .16 + .05*sin(wp.x*.013);
@@ -505,7 +505,7 @@ void main(){
     float fq = max(fwidth(rq.x), fwidth(rq.y)) * 1.5;
     float rp = fbm(rq, fq, 5) - .5;
     float rp2 = fbm(rq * vec2(3., 2.7) + 11., fq*3., 4) - .5;
-    n = normalize(n + vec3(rp2*.03, 0., (rp*.11 + rp2*.05)) * (.4 + .6*far) * mix(.06, 1.7, uChop));
+    n = normalize(n + vec3(rp2*.03, 0., (rp*.11 + rp2*.05)) * (.4 + .6*far) * mix(.06, 1.7, uChop) * smoothstep(4., 30., tW));   // v17: fade the perspective ripple streaks near the camera (they formed rings)
     vec3 rr = reflect(rd, n); rr.y = max(rr.y, .002); rr = normalize(rr);
     float tPr; float pr = uPier > 0. ? pierHit(pw*vec3(1,0,1) + vec3(0,-2.0+.0,0)*0. + vec3(0,-2.,0)*-0., rr, tPr) : 0.;
     vec3 Tr; vec3 refl = skyRay(ro, rr, pixA*2., false, Tr);
