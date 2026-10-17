@@ -319,7 +319,18 @@ float surfH(vec2 p){
 // ---------- DRAFT: hero breaking wave as its own shape (2D cross-section swept along the wave line) ----------
 // peel front moves right-to-left; right of it = exploded whitewater, at it = barrel (lip thrown over a hollow), left = steep open shoulder
 float heroPX(){ return -mod(uSurfT * 3.75, 15.); }   // 4 s period; rel is wrapped so the loop is seamless   // crosses the view right→left in ~4 s
-float gFoamD = 1e3;   // foam distance from the last heroSDF call (foam is volumetric, not a surface)
+float gFoamD = 1e3;
+// v17: inside soup (broken whitewater rolling toward the beach) as a foam layer painted on the water surface — no hard-edged slabs
+float soupAmt(vec2 xz){
+  if (uMess < .01 || uHero < .5) return 0.;
+  float cz = xz.y + uHeroD, xr = xz.x * .927 + cz * .375, zr = -xz.x * .375 + cz * .927 - uHeroD;
+  float H = uSurf * 1.4, s = zr + uHeroD + .003 * xr * xr, dz = s - .4 * H;
+  float lines = .5 + .5 * sin(dz * (1.1 - .25 * uMess) - uSurfT * 1.55 + fbm(vec2(xr * .07, 3.), 0., 2) * 3.);
+  float fb = fbm(vec2(xr * .35 - uSurfT * .2, dz * .45 - uSurfT * .5), 0., 4);
+  float pat = smoothstep(.4, .72, fb) * smoothstep(.4, .95, lines) + .45 * smoothstep(.6, .8, fb) * (1. - smoothstep(.4, .95, lines));
+  float band = smoothstep(.0, 1.5, dz) * (1. - smoothstep(uHeroD - 4., uHeroD + 2., dz));
+  return clamp(pat * band * uMess * 1.6 * smoothstep(.25, .55, uChop), 0., 1.);
+}   // foam distance from the last heroSDF call (foam is volumetric, not a surface)
 float heroSDF(vec3 p, float camM, out float mat, out vec4 info){
   { float cz = p.z + uHeroD; p = vec3(p.x * .927 + cz * .375, p.y, -p.x * .375 + cz * .927 - uHeroD); }   // ~22° down-the-line view
   // 2D profile swept along the crest. Phase from distance to the peel point (rel<0 = unbroken, peel moves right→left):
@@ -378,7 +389,7 @@ float heroSDF(vec3 p, float camM, out float mat, out vec4 info){
     float hS = uMess * H * (.06 * pat - .014) * band * smoothstep(.25, .55, uChop);   // inside soup needs wind/chop: small clean offshore days stay clean                 // height field: foam only where pat is high, open water between lines
     float dS = (y - .02 - hS) * .45;
     dF = min(dF, dC);
-    if (hS > .003) dSo = max(dS, .02 - y) * .7;   // no foam → no zero-thickness surface on the open water
+    // (geometry soup disabled — painted on the water by soupAmt instead)   // no foam → no zero-thickness surface on the open water
   }
   float dP = 1e3;
   if (uPerson > .5){   // scale reference: 1.83 m (6 ft) surfer standing thigh-deep in front of the face, board under arm
@@ -526,6 +537,11 @@ void main(){
     col *= mix(1., .5 + .5*smoothstep(.32, .62, h0), uChop * .75 * (1. - .6*far));   // wind chop: shadowed wave backs break up the mirror
     // aerial perspective over the water
     vec3 Ta; vec3 hzS = skyRay(ro, normalize(vec3(rd.x, .001, rd.z)), pixA, false, Ta);
+    { float sa0 = soupAmt(wp); if (sa0 > .01){   // v17 inside soup: bubbly lace, brighter than the water at dusk, lit by the sun when it gets through
+        float b2 = fbm(wp * vec2(6.5, 8.) + vec2(0., -uSurfT * 2.), fpW * 8., 3), strk = fbm(vec2(wp.x * .5 + uSeed.x, wp.y * 4.5 - uSurfT * 1.2), fpW * 4.5, 4);
+        float lace = smoothstep(.3, .7, sa0 * (.6 + .5 * b2 + .3 * strk));
+        vec3 fcS = vec3(dot(hzS, vec3(.2126,.7152,.0722))) * 1.35 * (.8 + .35 * b2) + ESUN * sunT(ro, sa) * sunVis * smoothstep(-.015, .02, sa.y) * .03 * uBack * vec3(1., .86, .7);
+        col = mix(col, fcS, lace * .95); } }
     float fog = 1. - exp(-tW*.001 * (BMe*1.3 + BR.g*1.) );
     // whitecaps: breaking crests lit by the sky (no data → no foam; coverage from the forecast wind)
     if (uCaps > .01){
@@ -681,6 +697,11 @@ void main(){
         if (uMess > .01){ float fz = smoothstep(.5, .8, fbm(vec2(p.x * .8 - uSurfT * .5, y * 2.1 + s * 1.4 - uSurfT * .8), 0., 5));   // v17: foam streaks / lace all over the crumbling face + whitecaps on the back
           crestFoam = max(crestFoam, uMess * (fz * (.35 + .65 * smoothstep(.45, .95, yr)) + smoothstep(-4., 1., relp) * smoothstep(.6, .95, yr) * .8 + smoothstep(.62, .92, yr) * smoothstep(.35, .65, tex) * .75)); c *= 1. - .15 * uMess; }
         c = mix(c, fc * (1. + .5 * uMess), clamp(crestFoam * (.7 + .3 * uMess), 0., 1.));
+        { float sa0 = soupAmt(p.xz) * (1. - smoothstep(.08, .35, yr)); if (sa0 > .01){   // v17 inside soup on the flats in front of the wave
+            float b2 = fbm(p.xz * vec2(6.5, 8.) + vec2(0., -uSurfT * 2.), 0., 3), strk = fbm(vec2(p.x * .5 + uSeed.x, p.z * 4.5 - uSurfT * 1.2), 0., 4);
+            float lace = smoothstep(.3, .7, sa0 * (.6 + .5 * b2 + .3 * strk));
+            c = mix(c, fc * (1.25 + .35 * b2), lace * .95); }
+          c *= 1. - .25 * uMess * (1. - smoothstep(.0, .3, yr)) * smoothstep(.35, .65, fbm(p.xz * vec2(.9, 1.6) + vec2(0., uSurfT * .8), 0., 4)); }   // wind-chop shading on the flats
       } else if (mat < 1.5){
         float rim = pow(1. - abs(dot(n, -rd)), 2.);   // grazing view through the thin sheet = glowing edge
         vec3 sss = sky * olive * 2.6 + sL * pow(fwd, 2.) * vec3(.55, .8, .35) * 3.;   // light transmitted through the sheet, olive subsurface tint
