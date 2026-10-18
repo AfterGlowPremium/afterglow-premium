@@ -30,7 +30,7 @@
   const syncDesk = () => { document.documentElement.classList.toggle("ag-desk", isDesk()); deskTop(); };
   syncDesk(); if (DESK_Q.addEventListener) DESK_Q.addEventListener("change", syncDesk); addEventListener("resize", deskTop);
   const vPos = sp => sp.vantage ? [sp.vantage.lat, sp.vantage.lng] : [sp.lat, sp.lng];
-  const PLAY = RISE ? "▶ Play the morning" : "▶ Play the evening";
+  const PLAY = "▶ Play";   // d21L: compact label for the right-hand control rail
   // phase names from the canvas preview are sunset-worded; mirror them for mornings
   const phaseName = p => !RISE ? p : ({ "Sunset": "Sunrise", "Afterglow": "First color", "Blue hour": "Blue hour (dawn)" }[p] || p);
   const REGIONS = {
@@ -55,13 +55,22 @@
     // azimuth at approx local sunset today: search for elevation crossing
     let t = Math.floor(nowT / 86400) * 86400 + (RISE ? 5 : 12) * 3600, az = RISE ? 90 : 270;
     for (let k = 0; k < 160; k++) { const p = sunPos(t + k * 300, sp.lat, sp.lng); if (RISE ? (p.elev > 0 && k > 0) : (p.elev < 0 && k > 0)) { az = p.az; break; } }
-    sp.az = az; sp.west = offset(sp.lat, sp.lng, az, 80); sp.path = [40, 120, 200].map(km => offset(sp.lat, sp.lng, az, km)); sp.east = offset(sp.lat, sp.lng, (az + 180) % 360, 12);
+    sp.az = az; sp.west = offset(sp.lat, sp.lng, az, 80); sp.path = [40, 120, 200].map(km => offset(sp.lat, sp.lng, az, km)); sp.east = offset(sp.lat, sp.lng, (az + 180) % 360, 12); sp.eastPts = [10, 30].map(km => offset(sp.lat, sp.lng, (az + 180) % 360, km));   // d23r: rain opposite the sun 5–40 km (rainbows)
   });
 
   // Open-Meteo free tier: 600 weighted calls/min, 5000/hour per IP. One mode load is ~300 weighted calls
   // (55 spots + 165 path points + AQ), so we share spot data across modes, cache longer, back off on errors,
   // and never dead-end: stale cache -> best-match -> baked NOAA snapshot shipped with the site.
   const sleep = ms => new Promise(res => setTimeout(res, ms));
+  // d23r: two anti-solar points per spot (10 + 30 km) merged into one series: rain/showers anywhere 5–40 km opposite the sun count
+  // (Virginia Beach Oct 17: ocean showers east at sunset, the single 12 km point was dry → no rainbow flag). Keeps E length = spots.
+  function mergeE(A) {
+    if (!A || A.length !== SPOTS.length * 2) return A;
+    return SPOTS.map((_, i) => { const a = A[2 * i], b = A[2 * i + 1], h = JSON.parse(JSON.stringify(a.hourly)), hb = b.hourly;
+      for (const k of Object.keys(h)) { if (k === "time" || !hb[k]) continue; h[k] = h[k].map((v, j) => { const w = hb[k][j]; if (v == null) return w; if (w == null) return v;
+        return k === "weather_code" ? ((w >= 80 && w <= 82) || w >= 95 ? Math.max(v, w) : Math.max(v, w) === w && !((v >= 80 && v <= 82) || v >= 95) ? w : v) : /cloud/.test(k) ? (v + w) / 2 : Math.max(v, w); }); }
+      return Object.assign({}, a, { hourly: h, merged: 2 }); });
+  }
   async function fetchBatch(points, hourly, daily, base = API, models, tries = 3, extra) {
     const p = new URLSearchParams({
       latitude: points.map(x => x.lat).join(","), longitude: points.map(x => x.lng).join(","),
@@ -119,7 +128,7 @@
       let AQ = null; try { AQ = await fetchBatch(SPOTS, "aerosol_optical_depth,pm2_5,dust", null, "https://air-quality-api.open-meteo.com/v1/air-quality", null, 1); } catch (e) { console.warn("AQ unavailable", e); }
       return { at: Date.now(), sig, S, AQ, fcModel: models ? "noaa" : "fallback", lite: !!lite };
     };
-    const getD = async models => { const [W, E] = await Promise.all([fetchBatch(SPOTS.flatMap(s => s.path), WEST_VARS, null, API, models), fetchBatch(SPOTS.map(s => s.east), EAST_VARS, null, API, models)]); return { at: Date.now(), sig, W, E }; };
+    const getD = async models => { const [W, E] = await Promise.all([fetchBatch(SPOTS.flatMap(s => s.path), WEST_VARS, null, API, models), fetchBatch(SPOTS.flatMap(s => s.eastPts), EAST_VARS, null, API, models).then(mergeE)]); return { at: Date.now(), sig, W, E }; };
     const tryLive = async (models, lite) => {
       const [b, dd] = await Promise.all([okB(B) && fresh(B) ? B : getB(models, lite), okD(D) && fresh(D) ? D : getD(models)]);
       if (b !== B && !b.lite) lsSet(BK, b); if (dd !== D) lsSet(DK, dd);   // never cache the lite set over a full one
@@ -223,7 +232,18 @@
       front: { k: "est", t: "Estimate from NOAA model dew-point/pressure series" } };
   }
   const fmtClock = iso => new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit", timeZoneName: "short" }).format(new Date(iso));
-  const tag = p => p ? `<span class="src ${p.k}" title="${p.t}">${{ obs: "NOAA obs", model: "NOAA model", calc: "Astronomical", est: "Estimate", fb: "Fallback" }[p.k]}</span>` : "";
+  const tag = p => p ? `<span class="src ${p.k === "demo" ? "fb" : p.k}" title="${p.t}">${{ obs: "NOAA obs", model: "NOAA model", calc: "Astronomical", est: "Estimate", fb: "Fallback", demo: "Demo sky" }[p.k]}</span>` : "";
+  // d19: ?sky= / ?wx= demo skies — the same layer values the renderer is forced to (app.js wOpt / photostage DEMO), in %, so the cards and caption match the picture
+  function demoSky() {
+    const q = new URLSearchParams(location.search), sk = q.get("sky"), wx = q.get("wx");
+    const SK = { clear: { high: 12, mid: 0, low: 0, block: 0 }, overcast: { high: 40, mid: 95, low: 85, block: 1 }, partly: { high: 35, mid: 30, low: 20, block: 0.15 }, broken: { high: 30, mid: 75, low: 45, block: 0.12 } };
+    const WX = { haze: { high: 25, mid: 15, low: 10, block: 0.3 }, partly: { high: 35, mid: 30, low: 20, block: 0.15 }, fog: { low: 50, block: 0.6 }, rain: { high: 50, mid: 90, low: 95, block: 1 }, storm: { high: 70, mid: 90, low: 90, block: 0.85 } };
+    if (!SK[sk] && !WX[wx]) return null;
+    const o = Object.assign({ high: 12, mid: 0, low: 0, block: 0 }, SK[sk] || {}, WX[wx] || {});
+    o.gray = sk === "overcast" || wx === "rain" || wx === "storm" ? 1 : 0;
+    o.types = { high: o.high >= 5 ? (o.high > 75 ? "Cirrostratus" : "Cirrus") : "", mid: o.mid >= 5 ? (o.mid < 50 ? "Altocumulus" : "Altostratus") : "", low: o.low >= 5 ? (wx === "fog" ? "Fog / mist" : o.low < 50 ? "Cumulus / stratocumulus" : "Stratus / stratocumulus") : "" };
+    return o;
+  }
   // Cloud genus from NOAA observations (tonight): GOES-19 phase + cloud-top height, HRRR cloud base
   function noaaCloudTypes(r) {
     const N = state.noaa; if (state.day !== 0 || !N || !N.goes) return null;
@@ -329,11 +349,11 @@
       const B = r.ev.bonus, T = r.ev.tri, ic = pinIcons(r);
       const bx = (B.dog.p >= BONUS_MIN ? `<em class="pb dog" title="Sun dogs ${B.dog.p}%">◉</em>` : "") + ((window.AGX && AGX.badges(r.spot)) || "");
       const html = `<div class="pin${T.on ? " tri" : ""}${hot ? " hot" : ""}" style="--c:${lb.c}"${hot ? ` title="${pScore} — top-tier sky"` : ""}><span>${pScore}</span>${bx}${T.on ? `<em class="ptri" title="Trifecta">✦</em>` : ""}${ic.length ? `<div class="pwx">${ic.map(x => `<i class="${x.c}" title="${x.t}">${x.i}</i>`).join("")}</div>` : ""}</div>`;
-      const icon = L.divIcon({ className: "pin-wrap", html, iconSize: [30, 30], iconAnchor: [15, 15] });
+      const icon = L.divIcon({ className: "pin-wrap", html, iconSize: [32, 32], iconAnchor: [16, 16] });
       if (markers[r.spot.id]) { if (markers[r.spot.id]._agHtml !== html) markers[r.spot.id].setIcon(icon); }   // d14: skip unchanged pins (was rebuilding all ~70 pin DOM nodes on every refresh)
       else markers[r.spot.id] = L.marker(vPos(r.spot), { icon, riseOnHover: true }).addTo(map)
         .on("click", () => openDetail(r.spot.id))
-        .bindTooltip("", { direction: "top", offset: [0, -16], className: "tip" });
+        .bindTooltip("", { direction: "top", offset: [0, -13], className: "tip" });
       markers[r.spot.id]._agHtml = html;
       markers[r.spot.id].setTooltipContent(`<b>${r.spot.name}</b>${r.spot.vantage ? `<br><small>☀ from ${r.spot.vantage.name}</small>` : ""}<br>${lb.t} · ${fmtTime(r.ev.tSet, r.tz)}${r.ev.bonus.bow.p >= BONUS_MIN ? `<br>🌈 ${r.ev.bonus.bow.name} ${r.ev.bonus.bow.p}%` : ""}${r.ev.bonus.dog.p >= BONUS_MIN ? `<br>◉ Sun dogs ${r.ev.bonus.dog.p}% — 22° either side of the sun, needs thin cirrus/cirrostratus with the sun under ~${RISE?"20":"20"}° up` : ""}${(window.AGX && AGX.tip(r.spot)) || ""}${r.ev.wx.items.map(w => `<br>${w.icon} ${w.name}${w.p ? " " + w.p + "%" : ""}`).join("")}${r.ev.tri.on ? `<br><b class="tt-tri">✦ TRIFECTA</b>` : ""}`);
       if (markers[r.spot.id].setZIndexOffset) markers[r.spot.id].setZIndexOffset(r.ev.tri.on ? 1000 : hot ? 900 : ic.length ? 200 : 0);
@@ -452,7 +472,7 @@
     }));
   }
   function stage(r) {
-    const sp = r.spot, ev = r.ev, T = ev.timing, s = ev.s, lb = label(ev.score), [t0, t1] = scrubRange(T);
+    const sp = r.spot, ev = r.ev, T = ev.timing, DS = demoSky(), s = DS ? Object.assign({}, ev.s, { high: DS.high, mid: DS.mid, low: DS.low }) : ev.s, slotB = DS ? DS.block : ev.slotBlock, lb = label(ev.score), [t0, t1] = scrubRange(T);
     const pct = t => ((t - t0) / (t1 - t0) * 100).toFixed(2);
     const marks = (RISE ? [["golden", T.golden, "Golden hour ends", "Golden"], ["sunset", T.sunset, "Sunrise", "Sunrise"], ["peak", T.peak, "Best", "Best"], ["glow", T.glowEnd, "First color", "1st color"], ["civil", T.civilEnd, "Civil dawn", "Dawn"]] : [["golden", T.golden, "Golden hour", "Golden"], ["sunset", T.sunset, "Sunset", "Sunset"], ["peak", T.peak, "Best", "Best"], ["glow", T.glowEnd, "Glow ends", "Glow end"], ["civil", T.civilEnd, "Twilight ends", "Dusk"]]).filter(m => m[1]).sort((a, b) => a[1] - b[1]);
     // merge markers that would overlap on the track (e.g. best minute ≈ glow ends)
@@ -462,40 +482,42 @@
     const types = Object.fromEntries(ev.clouds.map(c => [c.level.toLowerCase().split(" ")[0], c.type.split(" — ")[0]]));
     const P = provenance(r), nct = noaaCloudTypes(r);
     if (nct) nct.forEach(c => types[c.level.toLowerCase()] = c.type.replace(/ \(.*/, "") + (c.type.includes("GOES") ? " ✓" : ""));
+    if (DS) { Object.assign(types, DS.types); P.clouds = P.path = { k: "demo", t: "Demo URL sky (?sky= / ?wx=) — not today's forecast" }; }
     const chip = (k, v, sub, p) => `<div class="rc"><span>${k} ${p ? tag(p) : ""}</span><b>${v}</b>${sub ? `<small>${sub}</small>` : ""}</div>`;
     // track colors: day gold → sunset orange → peak rose → glow violet → night
     const tr = RISE ? `linear-gradient(90deg,#0b0a1c 0%,#1d1b44 ${pct(T.civilEnd || t0)}%,#7b5cff ${pct(T.glowEnd || T.peak - 900)}%,#ff4f9a ${pct(T.peak)}%,#ff8a3d ${pct(T.sunset)}%,#ffd08a ${pct(T.golden || t1)}%,#8fb3d9 100%)` : `linear-gradient(90deg,#8fb3d9 0%,#ffd08a ${pct(T.golden || t0)}%,#ff8a3d ${pct(T.sunset)}%,#ff4f9a ${pct(T.peak)}%,#7b5cff ${pct(T.glowEnd || T.peak + 900)}%,#1d1b44 ${pct(T.civilEnd || t1)}%,#0b0a1c 100%)`;
     return `
       <section class="stage" style="--c:${lb.c}">
         <canvas id="pv" aria-label="Illustrated forecast of the ${EV} at ${sp.name}"></canvas>
-        <img id="pv-ph0" class="pv-photo" alt=""><img id="pv-ph1" class="pv-photo" alt=""><canvas id="pv-back" class="pv-back" hidden aria-label="180° view behind you"></canvas><canvas id="pv-wx" class="pv-wx" aria-hidden="true"></canvas><div id="pv-wxl" class="pv-wxl" hidden></div>
+        <img id="pv-ph0" class="pv-photo" alt=""><img id="pv-ph1" class="pv-photo" alt=""><canvas id="pv-back" class="pv-back" hidden aria-label="180° view behind you"></canvas><canvas id="pv-wx" class="pv-wx" aria-hidden="true"></canvas>
         <div class="stage-top">
           <div><div class="d-kick">${sp.type} · ${sp.state}${r.mi != null ? " · " + Math.round(r.mi) + " mi away" : ""} · ${fmtDay(ev.tSet, r.tz, state.day)} ${fmtDate(ev.tSet, r.tz)}</div><h2>${sp.name}</h2>${sp.vantage ? `<div class="d-kick vant">📍 ${Ev} view from ${sp.vantage.name}</div>` : ""}${state.arch ? "" : `<div class="ev-toggle" role="group" aria-label="Sunrise or sunset at this spot"><a href="${evHref("sunrise", sp.id)}" data-ev="sunrise" class="${RISE ? "on" : ""}"${RISE ? ' aria-current="true"' : ""} title="Same spot facing east at sunrise">🌅 Sunrise</a><a href="${evHref("sunset", sp.id)}" data-ev="sunset" class="${RISE ? "" : "on"}"${RISE ? "" : ' aria-current="true"'} title="Same spot facing west at sunset">🌇 Sunset</a></div>`}</div>
-          <div class="stage-score"><b>${ev.score}</b><i>${lb.t}</i></div>
         </div>
         <div id="pv-gen" class="pv-gen" hidden></div>
-        <div class="stage-bottom">
-          <div class="stage-now"><b id="pv-time"></b><span id="pv-phase"></span><small id="pv-elev"></small></div>
-          <div class="stage-foot">
-            <div class="stage-badge"><span id="pv-badge">Illustrated forecast · not a photo</span><button id="pv-mode" class="pv-mode" hidden>AI finish: on</button></div>
+        <div class="stage-rail">
+          <div class="rail-top"><div class="stage-score" title="${EV} score"><b>${ev.score}</b><i>${lb.t}</i></div><div id="pv-wxl" class="pv-wxl" hidden></div></div>
+          <div class="rail-ctl"><button id="pv-play" class="play" title="Play the ${RISE ? "morning" : "evening"} (Space)">${PLAY}</button><button id="pv-turn" class="play turn" aria-pressed="false" title="Turn around and see the sky behind you (${RISE ? "west" : "east"}) — where rainbows appear">↻ 180°</button>
+            <div class="rail-zoom" role="group" aria-label="Zoom"><button class="zb" data-z="+" aria-label="Zoom in">+</button><output id="pv-zo">1.0×</output><button class="zb" data-z="-" aria-label="Zoom out">−</button><input id="pv-zoom" type="range" min="1" max="4" step="0.01" value="1" aria-label="Zoom into the scene" hidden></div></div>
+          <div class="stage-bottom">
+            <div class="stage-now"><b id="pv-time"></b><span id="pv-phase"></span><small id="pv-elev"></small></div>
             <div class="stage-dir" id="pv-dir">Facing ${compass(ev.sunsetAz)} ${Math.round(ev.sunsetAz)}°</div>
+            <div class="stage-badge"><span id="pv-badge">Illustrated forecast · not a photo</span><button id="pv-mode" class="pv-mode" hidden>AI finish: on</button></div>
           </div>
         </div>
       </section>
       <div class="scrub" style="--track:${tr}">
         <div class="scrub-marks">${marks.map((m, k) => `<button data-t="${m[1]}" style="left:${pct(m[1])}%" class="mk ${m[0]} ${k % 2 ? "alt" : ""}"><i></i><span class="lf">${m[2]}</span><span class="ls">${m[3]}</span><em>${fmtTime(m[1], r.tz).replace(/ [A-Z]{2,4}$/, "")}</em></button>`).join("")}</div>
         <input id="scrub" type="range" min="${t0}" max="${t1}" step="20" value="${T.peak}" aria-label="Time of ${RISE ? "morning" : "evening"}">
-        <div class="scrub-row"><button id="pv-play" class="play">${PLAY}</button><button id="pv-turn" class="play turn" aria-pressed="false" title="Turn around and see the sky behind you (${RISE ? "west" : "east"}) — where rainbows appear">↻ 180° Turn</button><span id="pv-what" class="pv-what"></span></div>
-        <div class="zoom-row"><span class="zl">Zoom</span><input id="pv-zoom" type="range" min="1" max="4" step="0.01" value="1" aria-label="Zoom into the scene"><output id="pv-zo">1.0×</output></div>
+        <div class="scrub-row"><span id="pv-what" class="pv-what"></span></div>
       </div>
-      <div class="readout">
+      <details class="readout-box" id="pv-ro"${state.roClosed ? "" : " open"}><summary>Sky &amp; water readouts</summary><div class="readout">
         ${chip("High", Math.round(s.high) + "%", types.high || "", P.clouds)}
         ${chip("Mid", Math.round(s.mid) + "%", types.mid || "", P.clouds)}
         ${chip("Low", Math.round(s.low) + "%", types.low || "", P.clouds)}
-        ${chip(DIRW + " gap", Math.round((1 - ev.slotBlock) * 100) + "% open", ev.slotBlock < 0.25 ? "light gets in" : ev.slotBlock < 0.55 ? "partly blocked" : "mostly blocked", P.path)}
+        ${chip(DIRW + " gap", Math.round((1 - slotB) * 100) + "% open", slotB < 0.25 ? "light gets in" : slotB < 0.55 ? "partly blocked" : "mostly blocked", P.path)}
         ${chip("Air", hazeTxt, s.aod != null ? "AOD " + s.aod.toFixed(2) : "RH " + Math.round(ev.rhLow) + "%", P.aod)}
         ${ev.sea || (sp.behind && sp.behind.water) || (window.AGX && AGX.faceEast(sp.id)) ? `<div class="rc" id="pv-sea"><span>Water</span><b>—</b><small></small></div>` : `<div class="rc"><span>Water</span><b>None</b><small>land foreground</small></div>`}
-      </div>
+      </div></details>
       <div class="fine pv-fine">This is an illustrated preview generated from this spot's forecast, not a photo. Cloud cover by layer comes from NOAA HRRR (with the low-cloud gap along the ${EV} line), haze from NOAA GOES-19 AOD / CAMS, and the lighting follows the actual sun position. Drag the slider or hit Play to watch the colors change through ${RISE ? "blue hour, first color, sunrise and golden hour" : "golden hour, sunset, afterglow and blue hour"}. Weather is drawn only when the forecast calls for it during the ${EV} window: rain (slanted by the wind), ⚡ storm cell and lightning (odds ≥ 25%), fog and snow. The water surface follows the forecast wind, gusts and wave height minute by minute: glassy and mirror-reflective under ~3 mph, light ripples to ~7 mph, small wavelets and a glitter path to ~11 mph, choppy with scattered whitecaps from ~12 mph, rough with frequent whitecaps past ~16 mph, and whitecaps everywhere past ~22 mph — with every shade in between. Rainbows form opposite the sun — behind you — so when rainbow odds are ≥ 10% a 🌈 “behind you” panel appears during the forecast rainbow window.</div>
       ${noaaPanel(r)}`;
   }
@@ -589,8 +611,9 @@
         if (wxq === "partly") Object.assign(zf, { high: 0.35, mid: 0.3, low: 0.2, block: 0.15, gap: 0.8 });
         if (wxq === "fog") Object.assign(zf, { rh: 0.99, aod: 0.9, low: 0.5, block: 0.6 });
         if (wxq === "rain") Object.assign(zf, { high: 0.5, mid: 0.9, low: 0.95, block: 1, gap: 0, aod: 0.35, rh: 0.95 });
-        if (wxq === "storm") Object.assign(zf, { high: 0.7, mid: 0.9, low: 0.9, block: 0.85, gap: 0.25, aod: 0.3, rh: 0.92 }); } if (!m || !m.ft) return zf; const r = { ...zf, swell: Math.min(1, m.ft / 8), phase: (t % 86400) / Math.max(4, m.per * 40) };
-        if (m.surf && m.ft >= 1.5) Object.assign(r, { hero: !/[?&]hero=0/.test(location.search), heroD: 9 + m.ft * 1.1, heroCam: 0.0016, mess: m.ft <= 2.2 ? 0.38 : 0, surf: m.ft * 0.3048, off: m.off ? 1 : 0, surfT: window.__agSurfT != null ? window.__agSurfT : (t % 900) + performance.now() / 1000, surfL: Math.max(30, Math.min(70, (m.per || 10) * 4.2)) });
+        if (wxq === "storm") Object.assign(zf, { high: 0.7, mid: 0.9, low: 0.9, block: 0.85, gap: 0.25, aod: 0.3, rh: 0.92 }); } if (!m || !m.ft) return zf; const ftC = Math.min(15, m.ft), r = { ...zf, swell: ftC <= 8 ? ftC / 8 : 1 + (ftC - 8) / 28, phase: (t % 86400) / Math.max(4, m.per * 40) };
+        if (m.surf && m.ft >= 1.5) Object.assign(r, { hero: !/[?&]hero=0/.test(location.search), heroD: 18, heroCam: /[?&]hero=0/.test(location.search) ? 0.0016 + 0.00045 * Math.max(0, ftC - 4) : 0.0015, faceK: 1 + 0.3 * Math.max(0, Math.min(1, ((m.per || 9) - 7) / 7)), mess: m.ft <= 2.2 ? 0.38 : 0, surf: ftC * 0.3048, off: m.off ? 1 : 0, surfT: window.__agSurfT != null ? window.__agSurfT : (t % 900) + performance.now() / 1000, surfL: Math.max(30, Math.min(70, (m.per || 10) * 4.2)) });   // d23w: PHYSICAL scale — the input is the forecast Hs; breaking face = 1.0 (wind swell, <= 7 s) .. 1.3 (groundswell, >= 14 s) x Hs; the camera stays put (eye 1.5 m above the water, wave 18 m out) for every size, so 2/3/5/10 ft keep their true proportions (was: face 1.4 x Hs and the camera crept to 11 m for small surf, so 5 ft looked like 8–10 ft). A 6 ft person in the shallows is drawn to the same geometry as a reference (off by default; ?ref=1 shows it — d23x). d19: 6–15 ft keep growing (hero modelled at 5 ft x K in the shader); beach view (hero=0) stands up on the dune for big surf so the lines behind the first set show
+        if (r.surf && m.dir != null && ev.sunsetAz != null) { const camAz = turned && sp.behind && sp.behind.water ? (ev.sunsetAz + 180) % 360 : ev.sunsetAz, da = ((m.dir - camAz + 540) % 360) - 180; r.swAng = Math.max(-40, Math.min(40, da)) * Math.PI / 180; }   // d19: swell lines angled by where the swell comes from vs where the camera looks
         if (m.wl) { Object.assign(r, { chop: m.wl.chop, caps: m.wl.caps }); if (r.surf) r.off = m.wl.off; if (r.hero && !heroWind(m.wl)) r.mess = Math.max(r.mess || 0, 0.3, Math.min(1, (m.wl.kt - 3) / 13)) * (/^onshore|light onshore/.test(m.wl.look) ? 1 : 0.55); }
         // architecture: forecast → classes → look dials (looks.js); the renderer reads only the dials
         if (window.Looks) { const s0 = ev.s || {}, qp = new URLSearchParams(location.search), wxq = qp.get("wx"), skq = qp.get("sky");
@@ -604,13 +627,22 @@
           if (r.surf && (D.wind === "onshore" || D.wind === "cross")) { const k = Math.max(0.3, Math.min(1, (cls.kt - 3) / 13)); r.mess = Math.max(r.mess || 0, D.wind === "onshore" ? k : 0.55 * k); r.off = 0; r.caps = Math.max(r.caps || 0, 0.2 + 0.5 * r.mess); r.chop = Math.max(r.chop || 0, 0.4 + 0.4 * r.mess); } }   // v17: barrel only offshore/calm; onshore & cross-shore → crumbly hero wave (no tube), messiness ∝ onshore wind
         if (/[?&]wx=(rain|storm)/.test(location.search)) r.chop = Math.min(1, (r.chop || 0.2) + 0.3);   // rain-pocked surface
         return r; };
-      const backWater = turned && sp.behind && sp.behind.water && window.Photoreal;
-      let o = backWater ? PhotoStage.draw(cv, Object.assign({}, sp, { far: sp.behind.far || "open", water: true, type: sp.type === "Pier" ? "Pier" : "Beach" }), ev, t, Object.assign({ lq: dragging, sunAzOff: 180 }, wOpt())) : null;
+      // d23: the 180° Turn renders BOTH water and land behind you with the photoreal shader: real ground (sand / marsh / lawn),
+      // the far shore's treeline, houses or dunes lit by the actual sun (front-lit at sunset, backlit at sunrise, diffuse under overcast)
+      const GB = turned && window.Photoreal && window.Ground ? Ground.behind(sp, RISE) : null;
+      let o = null;
+      if (GB) { const wo = wOpt(), G = Object.assign({}, GB); if (wo.surf && !G.land) G.nearD = 0;   // surf close-up: you are standing in the water
+        const fsp = Object.assign({}, sp, { far: G.d > 0 ? "open" : (sp.behind.far || "open"), water: !G.land, type: G.land ? sp.behind.type : sp.type === "Pier" ? "Pier" : "Beach" });
+        if (sp.behind && sp.behind.far === "bridge" && !G.land) fsp.far = "bridge";
+        const extra = { lq: dragging, turned: true, ground: G, hills: G.land ? 0 : undefined, shore: G.d > 0 ? 0 : undefined };
+        if (G.camH) extra.camH = G.camH; if (G.lake != null && !G.land) Object.assign(extra, { swell: 0, surf: 0, hero: 0, caps: (wo.caps || 0) * G.lake, chop: (wo.chop != null ? wo.chop : 0.3) * G.lake }); if (G.land) Object.assign(extra, { surf: 0, hero: 0, chop: 0, caps: 0, swell: 0 });
+        Object.keys(extra).forEach(k => extra[k] === undefined && delete extra[k]);
+        o = PhotoStage.draw(cv, fsp, ev, t, Object.assign({}, wo, extra)); }
       if (o && o.mode !== "live") o = null;
       const aq = anim ? { scale: AN.scale, dprCap: isDesk() ? 2 : 1.5, fast: AN.scale < 0.62 ? 1 : 0 } : {};   // v21: desktop animated frames keep DPR up to 2   // d14: animated frames: capped DPR + adaptive scale; stills stay full quality
-      if (!o) o = turned ? Object.assign(Preview.state(sp, ev, t), Preview.drawBehind(back, sp, ev, t), { mode: "behind" }) : PhotoStage.draw(cv, sp, ev, t, Object.assign(dragging && isDesk() ? { scale: 0.75 } : { lq: dragging }, wOpt(), aq));   // v21: desktop drags render at the 0.75 floor (phones 0.42)
+      if (!o) o = turned ? Object.assign(Preview.state(sp, ev, t), Preview.drawBehind(back, sp, ev, t), { mode: "behind" }) : PhotoStage.draw(cv, sp, ev, t, Object.assign(playing && window.__agPlayQ ? playOpt() : dragging && isDesk() ? { scale: 0.75 } : { lq: dragging }, wOpt(), aq));   // v21: desktop drags render at the 0.75 floor (phones 0.42)
       if (anim) return;   // d14: animation frames only redraw the WebGL scene — no DOM/label/weather recompute
-      { const gy = window.AGObs && AGObs.sceneAt ? AGObs.sceneAt(sp, ev, t).gray : ev.obs ? ev.obs.gray : 0; const fl = o.mode !== "live" && gy > 0 ? `saturate(${(1 - 0.9 * gy).toFixed(2)}) brightness(${(1 - 0.2 * gy).toFixed(2)})` : ""; if (cv.style.filter !== fl) cv.style.filter = fl; }   // d15: illustrated fallback goes gray too
+      { const gy = window.AGObs && AGObs.sceneAt ? AGObs.sceneAt(sp, ev, t).gray : ev.obs ? ev.obs.gray : 0; const fl = o.mode !== "live" && gy > 0 ? `saturate(${(1 - 0.65 * gy).toFixed(2)}) brightness(${(1 + 0.08 * gy).toFixed(2)})` : ""; if (cv.style.filter !== fl) cv.style.filter = fl; }   // d15: illustrated fallback goes gray too (d22: muted, not drained, and brighter)
       const turnedIll = turned && o.mode === "behind";
       if (o.mode === "live" && !/[?&]still=1/.test(location.search) && (window.PhotoStage && PhotoStage.last && PhotoStage.last.surf) && !dragging && !playing) startAnim();   // d14: keep the surf breaking at a steady 30 fps (was setTimeout 70 ms full re-render, ~12 fps, kept running behind the map)
       if (back) back.hidden = !turnedIll;
@@ -619,9 +651,10 @@
       else showPhotos(t);
       if (dragging && o.mode === "live" && !hqT) hqT = setTimeout(() => { hqT = 0; dragging = false; queue(); }, 160);   // v17 fix: surf re-renders no longer cancel the full-res pass (scene stuck low-res after a drag)
       wxT = t; wxC = window.Wx && (o.mode === "live" || window.AGX) ? Wx.conditions(ev, t, o.elev) : null;
+      { const Nw = window.AGObs && AGObs.now[sp.id], mo = Nw && Nw.metar; if (wxC && wxC.rain && (ev.obsDry || (mo && mo.dry && Math.abs(t - Date.now() / 1000) < 7200))) { wxC.rain = 0; wxC.rainName = null; } }   // d23: no model rain drawn once every nearby station reports it has stopped
       if (wxC) { if (o.mode !== "live") { wxC.rain = wxC.snow = wxC.fog = wxC.bolt = wxC.bow = 0; }   // canvas fallback draws its own weather
         const fw = turned ? (sp.behind && sp.behind.water) : sp.water, s0 = ev.s || {};
-        wxC.wdir = wNow.wdir; wxC.wind = wNow.wind != null ? wNow.wind : wxC.wind; { const dm = window.AGX && AGX.sea(sp, {}); if (dm && dm.demo && dm.mph != null) { wxC.wind = dm.mph; wxC.wdir = dm.wdir; } } wxC.faceAz = turned ? (ev.sunsetAz + 180) % 360 : ev.sunsetAz;
+        wxC.wdir = wNow.wdir; wxC.wind = wNow.wind != null ? wNow.wind : wxC.wind; { const dm = window.AGX && AGX.sea(sp, {}); if (dm && dm.demo && dm.mph != null) { wxC.wind = dm.mph; wxC.wdir = dm.wdir; } } wxC.faceAz = turned ? (ev.sunsetAz + 180) % 360 : ev.sunsetAz; wxC.turned = turned && o.mode === "live"; wxC.elev = o.elev; { const L = window.PhotoStage && PhotoStage.last; wxC.ref = o.mode === "live" && L && L.hero && L.surf > 0.2 && /[?&]ref=1/.test(location.search) ? { camH: (L.heroCam || 0.0015) * 1000, d: L.heroD || 18, fovMul: L.fovMul || 1, faceM: L.surf * (L.faceK || 1.15) } : null; }
         wxC.sea = fw && window.AGX && o.mode !== "live" ? AGX.sea(sp, { dir: wNow.wdir, mph: wNow.wind }) : null; wxC.trees = fw && sp.id === "grandview"; wxC.shore = fw && sp.id === "saltponds" && !!/[?&]hero=0/.test(location.search); wxC.dune = sp.id === "jennettes" && o.mode === "live"; { const wxq = new URLSearchParams(location.search).get("wx"); if (wxq === "rain" || wxq === "storm") { wxC.rain = 0.75; wxC.rainName = "Rain"; } if (wxq === "storm") { wxC.bolt = 0.9; wxC.boltP = 60; } if (wxq === "fog") wxC.fog = 0.7; if ((wxq && wxq !== "rain" && wxq !== "storm") || /[?&]sky=(clear|overcast)/.test(location.search)) { wxC.rain = wxC.snow = wxC.bolt = 0; } } wxC.seaLbl = fw && window.AGX ? AGX.sea(sp, { dir: wNow.wdir, mph: wNow.wind }) : null; wxC.torn = !!(window.AGX && AGX.alerts[sp.id] && AGX.alerts[sp.id].tornado) || /[?&]demo=tornado/.test(location.search); }   // canvas fallback already draws its own weather
       { const wl = $("#pv-wxl"), tx = wxC ? Wx.label(wxC) : ""; if (wl) { wl.hidden = !tx; if (wl.dataset.tx !== tx || wl.dataset.o !== String(!!state.wxOpen)) { wl.dataset.tx = tx; wl.dataset.o = String(!!state.wxOpen);
         const ic = /🌪/.test(tx) ? "🌪 Weather alert" : /🌊/.test(tx) ? "🌊 Wave info" : "☁ Weather info";
@@ -638,8 +671,8 @@
           se.querySelector("small").innerHTML = (wd != null ? `<span class="wdir"><i style="transform:rotate(${Math.round((wd + 180) % 360)}deg)" title="arrow = where the wind blows">↑</i>${Math.round(mph)} mph from ${compass(wd)}</span>${relTx ? `<em class="wrel ${relC}">${relTx}</em> · ` : ""}` : `${Math.round(mph)} mph · `) + [demo ? "" : `gust ${Math.round(gu)}`, ft != null ? `${ft < 1 ? "<1" : Math.round(ft)} ft` : ""].filter(Boolean).join(" · "); se.title = W2.txt; } }
       $("#pv-phase").textContent = phaseName(o.phase);
       $("#pv-elev").textContent = `sun ${o.elev >= 0 ? "+" : "−"}${Math.abs(o.elev).toFixed(1)}°`;
-      const parts = [["high", ev.s.high, "Cirrus"], ["mid", ev.s.mid, "Mid cloud"], ["low", ev.s.low, "Low cloud"]].filter(x => x[1] >= 10).map(x => `${x[2]} ${word(o.lit[x[0]])}`);
-      { const gw = window.AGObs && AGObs.sceneAt ? AGObs.sceneAt(sp, ev, t).gray : 0; if (gw > 0.5) { $("#pv-what").textContent = "Sun blocked by low/mid overcast: flat gray light, no color"; } else $("#pv-what").textContent = parts.length ? parts.join(" · ") : (o.elev > 0 ? "Clear sky: clean gradient, little canvas" : "Clear sky: horizon band fading"); }
+      const DSk = demoSky(), sNow = DSk || ev.s, parts = [["high", sNow.high, "Cirrus"], ["mid", sNow.mid, "Mid cloud"], ["low", sNow.low, "Low cloud"]].filter(x => x[1] >= 10).map(x => `${x[2]} ${word(o.lit[x[0]])}`);
+      { const gw = DSk ? DSk.gray : window.AGObs && AGObs.sceneAt ? AGObs.sceneAt(sp, ev, t).gray : 0; /* d19: demo sky → caption follows the forced sky, not today's obs */ if (gw > 0.5) { $("#pv-what").textContent = "Sun blocked by low/mid overcast: flat gray light, no color"; } else $("#pv-what").textContent = parts.length ? parts.join(" · ") : (o.elev > 0 ? "Clear sky: clean gradient, little canvas" : "Clear sky: horizon band fading"); }
       document.querySelectorAll(".scrub .mk").forEach(b => b.classList.toggle("on", Math.abs(+b.dataset.t - t) < 90));
     };
     const queue = () => { if (!raf) raf = requestAnimationFrame(render); }; window.__agQueue = queue;
@@ -662,7 +695,7 @@
       gen.hidden = set.done || !set.busy; gen.textContent = `Photo finish ${n}/${tot}…`;
       queue();
     };
-    { const tb = $("#pv-turn"); if (tb) { const sync = () => { tb.classList.toggle("on", !!state.turn); tb.setAttribute("aria-pressed", state.turn ? "true" : "false"); tb.textContent = state.turn ? "↺ Face the " + EV : "↻ 180° Turn"; };
+    { const tb = $("#pv-turn"); if (tb) { const sync = () => { tb.classList.toggle("on", !!state.turn); tb.setAttribute("aria-pressed", state.turn ? "true" : "false"); tb.textContent = state.turn ? "↺ Back" : "↻ 180°"; tb.title = state.turn ? "Face the " + EV + " again" : "Turn around and see the sky behind you — where rainbows appear"; };
       sync(); tb.onclick = () => { state.turn = !state.turn; sync(); queue(); }; } }
     if (modeBtn) modeBtn.onclick = () => { photoOn = !photoOn; modeBtn.textContent = "AI finish: " + (photoOn ? "on" : "off"); queue(); };
     if (PhotoStage.live()) {
@@ -673,13 +706,22 @@
     sl.addEventListener("input", () => { stop(); dragging = true; clearTimeout(hqT); hqT = 0; queue(); });
     document.querySelectorAll(".scrub .mk").forEach(b => b.addEventListener("click", () => { stop(); sl.value = b.dataset.t; queue(); }));
     const stop = () => { if (playing) { cancelAnimationFrame(playing); playing = 0; $("#pv-play").textContent = PLAY; } };
+    // d21: Play renders at an adaptive resolution with a raised floor (was the 0.42 drag preview): effective CSS-pixel density
+    // phones 0.9–1.3 (DPR cap 2), desktop 1.0–1.6; if a phone still can't hold ~30 fps at the floor it drops to the short ray-march (fast)
+    const playOpt = () => { const Q = window.__agPlayQ, cap = 2, dpr = Math.min(window.devicePixelRatio || 1, cap); return { scale: Math.min(1, Q.eff / dpr), dprCap: cap, fast: Q.fast ? 1 : 0 }; };
+    const playTick = ts => { const desk = isDesk(), Q = window.__agPlayQ || (window.__agPlayQ = { eff: desk ? 1.3 : 1.0, ema: 33, last: 0, slow: 0, fast: false }), lo = desk ? 1.0 : 0.9, hi = desk ? 1.6 : 1.3, tgt = desk ? 22 : 33;
+      if (Q.last) { Q.ema = Q.ema * 0.8 + Math.min(250, ts - Q.last) * 0.2;
+        if (Q.ema > tgt * 1.25) { if (Q.eff > lo) Q.eff = Math.max(lo, Q.eff * 0.93); else if (!desk && ++Q.slow > 20) Q.fast = true; }
+        else if (Q.ema < tgt * 1.05) { Q.slow = 0; if (Q.fast) Q.fast = false; else Q.eff = Math.min(hi, Q.eff * 1.02); } }
+      Q.last = ts; };
     $("#pv-play").onclick = () => {
       if (playing) return stop();
+      if (window.__agPlayQ) window.__agPlayQ.last = 0;
       const t0 = +sl.min, t1 = +sl.max, dur = 9000; let start = null;
       if (+sl.value >= t1 - 60) sl.value = t0;
       const from = +sl.value;
       $("#pv-play").textContent = "❚❚ Pause";
-      const step = ts => { if (start == null) start = ts; const f = Math.min(1, (ts - start) / (dur * (t1 - from) / (t1 - t0))); sl.value = from + (t1 - from) * f; dragging = f < 1; render(); playing = f < 1 ? requestAnimationFrame(step) : (stop(), 0); };
+      const step = ts => { playTick(ts); if (start == null) start = ts; const f = Math.min(1, (ts - start) / (dur * (t1 - from) / (t1 - t0))); sl.value = from + (t1 - from) * f; dragging = f < 1; render(); playing = f < 1 ? requestAnimationFrame(step) : (stop(), 0); };
       playing = requestAnimationFrame(step);
     };
     render();
@@ -779,7 +821,9 @@
         st.addEventListener("touchstart", e => { if (e.touches.length === 2) { d0 = dist(e); z0 = +zs.value; } }, { passive: true });
         st.addEventListener("touchmove", e => { if (e.touches.length === 2 && d0) { e.preventDefault(); setZ(z0 * dist(e) / d0); state.zoom = +zs.value; } }, { passive: false });
         st.addEventListener("touchend", () => { d0 = 0; }, { passive: true });
-        st.addEventListener("dblclick", () => { setZ(1); state.zoom = 1; });
+        st.addEventListener("dblclick", e => { if (e.target.closest && e.target.closest(".stage-rail,.stage-top")) return; setZ(1); state.zoom = 1; });
+        st.querySelectorAll(".rail-zoom .zb").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); setZ((+zs.value) * (b.dataset.z === "+" ? 1.25 : 0.8)); state.zoom = +zs.value; }));   // d21L: zoom − / + in the right rail (pinch, wheel and double-tap still work on the render)
+        { const ro = $("#pv-ro"); if (ro) ro.addEventListener("toggle", () => { state.roClosed = !ro.open; }); }
         st.addEventListener("wheel", e => { if (e.target.closest && e.target.closest(".pv-wxl")) return; e.preventDefault(); const k = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1; setZ((+zs.value) * Math.exp(-e.deltaY * k * (e.ctrlKey ? 0.01 : 0.0018))); state.zoom = +zs.value; }, { passive: false }); } }   // v21: mouse-wheel / trackpad-pinch zoom on the render
     document.body.classList.add("detail-open");
     $("#detail").classList.add("open");
@@ -924,7 +968,7 @@
     pastBusy = (async () => {
       const S = await fetchBatch(SPOTS, SPOT_VARS, "sunset,sunrise", API, "gfs_seamless", 2, ex);
       const W = await fetchBatch(SPOTS.flatMap(s => s.path), WEST_VARS, null, API, "gfs_seamless", 2, ex);
-      const E = await fetchBatch(SPOTS.map(s => s.east), EAST_VARS, null, API, "gfs_seamless", 2, ex);
+      const E = mergeE(await fetchBatch(SPOTS.flatMap(s => s.eastPts), EAST_VARS, null, API, "gfs_seamless", 2, ex));
       pastData = { at: Date.now(), S, W, E, AQ: null, fcModel: "noaa", prov: {}, past: true };
       return pastData;
     })().finally(() => { pastBusy = null; });

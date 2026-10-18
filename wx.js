@@ -55,7 +55,26 @@
         const gr = x.createLinearGradient(0, hz - H * 0.22, 0, hz + 6); gr.addColorStop(0, "rgba(110,116,132,0)"); gr.addColorStop(1, `rgba(110,116,132,${0.3 * C.rain})`); x.fillStyle = gr; x.fillRect(0, hz - H * 0.22, W, H * 0.22 + 6); }
       x.restore();
     }
-    if (C.bow > 0.01) {   // the bow is opposite the sun, i.e. behind someone facing the event: inset "look behind you" panel
+    if (C.ref) person(x, W, H, C.ref);
+    if (C.bow > 0.01 && C.turned) {   // d23r: 180° Turn — the bow is IN view: full arc round the antisolar point (below the horizon by the sun's
+      // elevation), 42° primary + faint 51° secondary (reversed). Phone fields of view are ~30° wide, so the arc is drawn wide-angle to fit the
+      // whole bow. Low sun (red bow): blue/green scattered out → red, pink, orange; brightest at the bases where the rain is thickest
+      // (VB oceanfront Oct 17 2026 reference). Hazy distant rain veil underneath, brighter sky inside the bow.
+      const e = clamp((C.elev || 0) / 42), R = Math.min(W * 0.47, H * 0.62), cx = W / 2, cy = hz + e * R, A = clamp(C.bow * 1.2);
+      x.save();
+      const veil = x.createLinearGradient(0, hz - R * 0.55, 0, hz); veil.addColorStop(0, "rgba(170,160,170,0)"); veil.addColorStop(1, `rgba(${C.red ? "196,160,168" : "170,176,190"},${0.35 * A})`);
+      x.fillStyle = veil; x.fillRect(0, hz - R * 0.55, W, R * 0.55);
+      const inG = x.createRadialGradient(cx, cy, R * 0.2, cx, cy, R * 0.95); inG.addColorStop(0, "rgba(255,240,235,0)"); inG.addColorStop(1, `rgba(255,236,228,${0.16 * A})`);
+      x.beginPath(); x.arc(cx, cy, R * 0.95, Math.PI, 2 * Math.PI); x.closePath(); x.fillStyle = inG; x.fill();
+      const cols = C.red ? [[255, 60, 50], [255, 92, 110], [255, 120, 80], [255, 165, 95]] : [[255, 50, 45], [255, 140, 40], [255, 225, 70], [80, 200, 90], [70, 130, 255], [120, 80, 220]];
+      const bw = R * 0.022, segs = 48;
+      x.globalCompositeOperation = "lighter";
+      const arcBand = (r, c, al) => { for (let k = 0; k < segs; k++) { const a0 = Math.PI + k * Math.PI / segs, a1 = a0 + Math.PI / segs + 0.002, m = Math.abs(Math.cos((a0 + a1) / 2));
+          x.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${(al * (0.45 + 0.55 * m * m)).toFixed(3)})`; x.lineWidth = bw * 1.25; x.beginPath(); x.arc(cx, cy, r, a0, a1); x.stroke(); } };
+      cols.forEach((c, i) => arcBand(R - i * bw, c, A * (C.red ? 0.62 : 0.5)));
+      cols.slice().reverse().forEach((c, i) => arcBand(R * 51 / 42 - i * bw * 1.3, c, A * 0.13));
+      x.restore();
+    } else if (C.bow > 0.01) {   // the bow is opposite the sun, i.e. behind someone facing the event: inset "look behind you" panel
       const pw = Math.min(W * 0.42, 190), ph = pw * 0.62, px = W - pw - 12, py = H * 0.2;
       x.save(); x.globalAlpha = clamp(C.bow * 1.4); x.fillStyle = "rgba(60,62,86,.85)"; x.strokeStyle = "rgba(255,255,255,.5)"; x.lineWidth = 1;
       x.beginPath(); x.roundRect ? x.roundRect(px, py, pw, ph, 10) : x.rect(px, py, pw, ph); x.fill(); x.stroke(); x.clip();
@@ -65,6 +84,23 @@
       x.globalCompositeOperation = "source-over"; x.globalAlpha = 1; x.fillStyle = "#fff"; x.font = "600 11px Inter,sans-serif"; x.textAlign = "center";
       x.fillText(`🌈 ${C.red ? "Red rainbow" : "Rainbow"} ${C.bowP}% · behind you`, px + pw / 2, py + 15); x.restore();
     }
+  }
+  // d23w: scale reference — a 6 ft (1.83 m) person standing knee-deep (0.45 m) in the shallows 4 m in front of the hero wave, projected with the
+  // SAME camera as the shader (vertical FOV 62/50/40° by aspect, pitch 0.04 x FOV up, eye height and distance from PhotoStage), so the wave's
+  // face can be read against a body: 2 ft ≈ knee-thigh, 3 ft ≈ waist, 5 ft ≈ chest-head, 10 ft ≈ well overhead.
+  function person(x, W, H, R) {
+    const asp = W / H, vf = (asp < 1 ? 62 : asp < 1.5 ? 50 : 40) * R.fovMul * Math.PI / 180, th = Math.tan(vf / 2), pitch = vf * 0.04 / Math.max(0.2, R.fovMul) * R.fovMul;
+    const d = Math.max(6, R.d - 4), Y = h => H / 2 - Math.tan(Math.atan((h - R.camH) / d) - pitch) / (2 * th) * H, ppm = H / (2 * th * d);
+    const cx = W * 0.22, wl = Y(0), top = Y(1.83 - 0.45), m = v => v * ppm;
+    if (!(wl > 0 && top < H)) return;
+    x.save(); x.fillStyle = "rgba(18,20,26,0.88)";
+    x.beginPath(); x.arc(cx, top + m(0.12), m(0.11), 0, 2 * Math.PI); x.fill();                        // head
+    x.beginPath(); x.moveTo(cx - m(0.22), top + m(0.3)); x.lineTo(cx + m(0.22), top + m(0.3)); x.lineTo(cx + m(0.15), wl + m(0.02)); x.lineTo(cx - m(0.15), wl + m(0.02)); x.closePath(); x.fill();   // torso / legs to the waterline
+    x.fillRect(cx + m(0.2), top + m(0.32), m(0.08), m(0.6)); x.fillRect(cx - m(0.28), top + m(0.32), m(0.08), m(0.55));   // arms
+    x.fillStyle = "rgba(30,34,44,0.9)"; x.fillRect(cx + m(0.29), top + m(0.25), m(0.1), Math.min(m(1.0), wl - top - m(0.25)));   // bodyboard held under the arm
+    x.strokeStyle = "rgba(235,240,245,0.55)"; x.lineWidth = Math.max(1, m(0.04)); x.beginPath(); x.ellipse(cx, wl, m(0.3), m(0.05), 0, 0, 2 * Math.PI); x.stroke();   // foam ring at the waterline
+    x.fillStyle = "rgba(255,255,255,0.7)"; x.font = "600 10px Inter,sans-serif"; x.textAlign = "center"; x.fillText("6 ft", cx, top - 4);
+    x.restore();
   }
   // Surf/sea layer: wave rows scale with height; chop & ripple density with wind; offshore = smooth glassy faces that
   // stand up, pitch and barrel (spray blown back off the lip); combo swell = peaky A-frames; rows angle with swell dir.
